@@ -1,0 +1,88 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum SubscriptionState {
+  PENDING
+  ACTIVE
+  PAST_DUE
+  SUSPENDED
+  CANCELLED
+  PAUSED
+}
+
+enum PlanType {
+  MONTHLY
+  ANNUAL
+  ANNUAL_CRYPTO
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String
+  emailVerified Boolean   @default(false)
+  tcpaConsent   Boolean   @default(false)
+  smsFallback   Boolean   @default(false)
+  summaryEmailOptIn Boolean @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  subscription  Subscription?
+  phoneNumbers  PhoneNumber[]
+  callEvents    CallEvent[]
+  alertPrefs    AlertPreference[]
+}
+
+model Subscription {
+  id                 String             @id @default(cuid())
+  userId             String             @unique
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  state              SubscriptionState  @default(PENDING)
+  plan               PlanType           @default(MONTHLY)
+  renewalAt          DateTime?
+  paymentMethodLabel String?
+  onboardingStep     Int                @default(0)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+}
+
+model PhoneNumber {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  e164        String
+  label       String?
+  verified    Boolean  @default(false)
+  enabled     Boolean  @default(true)
+  dndStartMin Int?
+  dndEndMin   Int?
+  createdAt   DateTime @default(now())
+}
+
+model CallEvent {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  occurredAt  DateTime @default(now())
+  asset       String
+  trigger     String
+  durationSec Int?
+  answered    Boolean
+}
+
+model AlertPreference {
+  id        String  @id @default(cuid())
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  asset     String
+  enabled   Boolean @default(true)
+  threshold String?
+
+  @@unique([userId, asset])
+}
