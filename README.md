@@ -9,13 +9,26 @@ Volatility-triggered phone call alerts — web app aligned with **VOLCALL PRD v1
 - **Next.js 15** (App Router), **React 19**, **Tailwind CSS 4**
 - **Prisma** + **SQLite** (local dev; use PostgreSQL in production)
 - **bcrypt** passwords, **jose** JWT session cookie
-- **Integrations** (Twilio, Stripe, Circle, Deribit, Resend) are **stubbed or demo**; wire real keys via environment variables when you connect services.
+- **Integrations** (opt-in via `.env`): **Resend** (email verification), **Twilio Verify** (SMS OTP), **Stripe Checkout** (subscription start + webhook), **Deribit** + **Redis** (alert worker). Without keys, the app falls back to the original demo paths (`000000` OTP, simulated checkout, etc.).
+
+### Alert engine (separate process)
+
+```bash
+# Requires DATABASE_URL; optional REDIS_URL, Twilio voice vars — see .env.example
+npm run alert-engine
+```
+
+Default **`ALERT_ENGINE_DRY_RUN=true`**: evaluates thresholds and writes `[dry-run]` `CallEvent` rows instead of placing voice calls.
+
+### Stripe webhooks (local)
+
+Use [Stripe CLI](https://stripe.com/docs/stripe-cli) to forward `checkout.session.completed` to `/api/stripe/webhook` and set `STRIPE_WEBHOOK_SECRET`.
 
 ## Setup
 
 ```bash
 cp .env.example .env
-# Edit JWT_SECRET for production (min 16 characters).
+# Set JWT_SECRET (min 16 chars), NEXT_PUBLIC_APP_URL, and any integration keys you need.
 
 npm install
 npx prisma db push

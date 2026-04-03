@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSessionFromCookies } from "@/lib/session";
+import { enforceEmailVerification } from "@/lib/email-enforcement";
 
 const schema = z.object({
   fromStep: z.number().int().min(1).max(4),
@@ -22,16 +23,27 @@ export async function POST(request: Request) {
     );
   }
 
-  const sub = await prisma.subscription.findUnique({
-    where: { userId: session.sub },
+  const user = await prisma.user.findUnique({
+    where: { id: session.sub },
+    include: { subscription: true },
   });
-  if (!sub) {
+  if (!user?.subscription) {
     return NextResponse.json({ error: "No subscription" }, { status: 400 });
   }
+  const sub = user.subscription;
 
   const { fromStep } = parsed.data;
 
   if (fromStep === 1) {
+    if (enforceEmailVerification() && !user.emailVerified) {
+      return NextResponse.json(
+        {
+          error:
+            "Verify your email before adding phones when email delivery is enabled.",
+        },
+        { status: 400 },
+      );
+    }
     if (sub.onboardingStep !== 0) {
       return NextResponse.json(
         { error: "Invalid step progression." },

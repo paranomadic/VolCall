@@ -37,19 +37,32 @@ model User {
   phoneNumbers  PhoneNumber[]
   callEvents    CallEvent[]
   alertPrefs    AlertPreference[]
+  emailVerificationTokens EmailVerificationToken[]
+}
+
+model EmailVerificationToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
 }
 
 model Subscription {
-  id                 String             @id @default(cuid())
-  userId             String             @unique
-  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  state              SubscriptionState  @default(PENDING)
-  plan               PlanType           @default(MONTHLY)
-  renewalAt          DateTime?
-  paymentMethodLabel String?
-  onboardingStep     Int                @default(0)
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
+  id                   String             @id @default(cuid())
+  userId               String             @unique
+  user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  state                SubscriptionState  @default(PENDING)
+  plan                 PlanType           @default(MONTHLY)
+  renewalAt            DateTime?
+  paymentMethodLabel   String?
+  onboardingStep       Int                @default(0)
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
 }
 
 model PhoneNumber {
@@ -85,4 +98,14 @@ model AlertPreference {
   threshold String?
 
   @@unique([userId, asset])
+}
+
+/** Samples DVOL (or related) from the alert engine for debugging / dashboards. */
+model FeedReading {
+  id         String   @id @default(cuid())
+  source     String
+  asset      String
+  dvol       Float?
+  detail     String?
+  recordedAt DateTime @default(now())
 }

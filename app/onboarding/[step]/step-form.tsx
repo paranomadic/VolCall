@@ -6,6 +6,12 @@ import { Button } from "@/components/ui/button";
 
 type Phone = { id: string; e164: string; enabled: boolean };
 
+type Flags = {
+  emailVerification: boolean;
+  twilioVerify: boolean;
+  stripeCheckout: boolean;
+};
+
 export function OnboardingStepForm({
   step,
   emailVerified,
@@ -17,6 +23,7 @@ export function OnboardingStepForm({
   const [phones, setPhones] = useState<Phone[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [flags, setFlags] = useState<Flags | null>(null);
 
   const [e164, setE164] = useState("");
   const [otp, setOtp] = useState("");
@@ -35,9 +42,41 @@ export function OnboardingStepForm({
     void refreshPhones();
   }, [step]);
 
+  useEffect(() => {
+    void fetch("/api/public/flags")
+      .then((r) => r.json())
+      .then((f: Flags) => setFlags(f))
+      .catch(() =>
+        setFlags({
+          emailVerification: false,
+          twilioVerify: false,
+          stripeCheckout: false,
+        }),
+      );
+  }, []);
+
   async function verifyEmailDemo() {
     await fetch("/api/auth/verify-demo", { method: "POST" });
     router.refresh();
+  }
+
+  async function sendSmsCode() {
+    setError(null);
+    setLoading(true);
+    const res = await fetch("/api/onboarding/phone/send-code", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ e164 }),
+    });
+    const data = await res.json().catch(() => ({}));
+    setLoading(false);
+    if (!res.ok) {
+      setError(data.error ?? "Could not send code.");
+      return;
+    }
+    if (data.mode === "demo") {
+      setError(null);
+    }
   }
 
   async function addPhone(e: React.FormEvent) {
@@ -97,8 +136,7 @@ export function OnboardingStepForm({
     router.refresh();
   }
 
-  async function mockPayment(e: React.FormEvent) {
-    e.preventDefault();
+  async function runMockPayment() {
     setError(null);
     setLoading(true);
     const res = await fetch("/api/onboarding/payment", { method: "POST" });
@@ -110,6 +148,21 @@ export function OnboardingStepForm({
     }
     router.push("/onboarding/4");
     router.refresh();
+  }
+
+  async function startStripeCheckout() {
+    setError(null);
+    setLoading(true);
+    const res = await fetch("/api/onboarding/create-checkout", {
+      method: "POST",
+    });
+    const data = await res.json().catch(() => ({}));
+    setLoading(false);
+    if (!res.ok || !data.url) {
+      setError(data.error ?? "Could not start Stripe Checkout.");
+      return;
+    }
+    window.location.href = data.url as string;
   }
 
   async function complete(e: React.FormEvent) {
@@ -128,25 +181,40 @@ export function OnboardingStepForm({
   }
 
   if (step === 1) {
+    const twilioOn = flags?.twilioVerify;
+    const resendOn = flags?.emailVerification;
     return (
       <div>
         <h1 className="text-xl font-semibold">Add a phone number</h1>
         <p className="mt-2 text-sm text-[var(--muted)]">
-          E.164 format (e.g. +14155552671). Demo OTP:{" "}
-          <code className="text-[var(--accent)]">000000</code>
+          E.164 format (e.g. +14155552671).
+          {twilioOn
+            ? " Tap “Send SMS code” to receive a code from Twilio Verify."
+            : " Demo mode accepts OTP 000000 without Twilio."}
         </p>
         {!emailVerified && (
           <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm">
-            <p>Email not verified yet. In production you&apos;d click the link in
-            your inbox.</p>
-            <Button
-              type="button"
-              variant="outline"
-              className="mt-2"
-              onClick={() => void verifyEmailDemo()}
-            >
-              Mark email verified (demo)
-            </Button>
+            {resendOn ? (
+              <p>
+                Verify your email using the link we sent. Until then, you cannot
+                continue past this step while Resend is configured.
+              </p>
+            ) : (
+              <>
+                <p>
+                  Email delivery is not configured; use the demo verifier for
+                  local testing.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="mt-2"
+                  onClick={() => void verifyEmailDemo()}
+                >
+                  Mark email verified (demo)
+                </Button>
+              </>
+            )}
           </div>
         )}
         <form onSubmit={addPhone} className="mt-6 space-y-4">
@@ -162,6 +230,17 @@ export function OnboardingStepForm({
               required
               className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2 outline-none focus:border-[var(--accent)]"
             />
+            {twilioOn && (
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-2"
+                disabled={loading || !e164}
+                onClick={() => void sendSmsCode()}
+              >
+                Send SMS code
+              </Button>
+            )}
           </div>
           <div>
             <label className="text-sm text-[var(--muted)]" htmlFor="otp">
@@ -171,7 +250,7 @@ export function OnboardingStepForm({
               id="otp"
               value={otp}
               onChange={(e) => setOtp(e.target.value)}
-              placeholder="000000"
+              placeholder={twilioOn ? "6-digit code" : "000000"}
               required
               className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2 outline-none focus:border-[var(--accent)]"
             />
@@ -262,23 +341,39 @@ export function OnboardingStepForm({
   }
 
   if (step === 3) {
+    const stripeOn = flags?.stripeCheckout;
     return (
       <div>
         <h1 className="text-xl font-semibold">Payment</h1>
         <p className="mt-2 text-sm text-[var(--muted)]">
-          Production uses Stripe Checkout (card, Apple Pay, Google Pay) and
-          Circle for USDC. This demo confirms instantly.
+          {stripeOn
+            ? "Pay with Stripe Checkout (cards, Apple Pay, Google Pay where enabled). USDC annual still uses the simulated path until Circle is wired."
+            : "Configure STRIPE_SECRET_KEY plus price IDs to enable Checkout; otherwise use the simulator below."}
         </p>
-        <form onSubmit={mockPayment} className="mt-8">
-          {error && (
-            <p className="mb-4 text-sm text-red-400" role="alert">
-              {error}
-            </p>
+        {error && (
+          <p className="mb-4 text-sm text-red-400" role="alert">
+            {error}
+          </p>
+        )}
+        <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+          {stripeOn && (
+            <Button
+              type="button"
+              disabled={loading}
+              onClick={() => void startStripeCheckout()}
+            >
+              {loading ? "Redirecting…" : "Pay with Stripe Checkout"}
+            </Button>
           )}
-          <Button type="submit" disabled={loading}>
-            {loading ? "Processing…" : "Simulate successful checkout"}
+          <Button
+            type="button"
+            variant="outline"
+            disabled={loading}
+            onClick={() => void runMockPayment()}
+          >
+            Simulate successful checkout (dev)
           </Button>
-        </form>
+        </div>
       </div>
     );
   }
@@ -287,8 +382,8 @@ export function OnboardingStepForm({
     <div>
       <h1 className="text-xl font-semibold">Confirm & activate</h1>
       <p className="mt-2 text-sm text-[var(--muted)]">
-        Your subscription will move to ACTIVE. A welcome email would be sent
-        via Resend or SendGrid.
+        Your subscription will move to ACTIVE. Welcome email can go through
+        Resend once you configure DNS.
       </p>
       <form onSubmit={complete} className="mt-8">
         {error && (

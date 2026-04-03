@@ -1,6 +1,6 @@
 # VolCall — product decisions & repo map
 
-This document records **implementation choices** relative to **VOLCALL PRD v1.0** and maps them to **what exists in this repository today**. Use it for onboarding engineers and for planning the next integration milestones.
+This document records **implementation choices** relative to **VOLCALL PRD v1.0** and maps them to **what exists in this repository**. Use it for onboarding engineers and for planning the next integration milestones.
 
 ---
 
@@ -8,19 +8,19 @@ This document records **implementation choices** relative to **VOLCALL PRD v1.0*
 
 | Topic | Decision | In the repo today | Next steps (when prioritized) |
 |-------|----------|-------------------|-------------------------------|
-| **Backend shape** | PRD suggests Next.js (frontend) and Node + Fastify (APIs). This repo uses **Next.js App Router + Route Handlers only** so there is a single app to run and deploy; Fastify can be split out later with limited UI impact. | `app/api/**` route handlers; one Next.js deployable. | Optional: extract high-throughput or long-running paths to Fastify (or a worker) behind the same domain. |
+| **Backend shape** | PRD suggests Next.js (frontend) and Node + Fastify (APIs). This repo uses **Next.js App Router + Route Handlers only** so there is a single app to run and deploy; Fastify can be split out later with limited UI impact. | `app/api/**` route handlers; one Next.js deployable. **Long-running alert loop** is `workers/alert-engine.ts` (separate process). | Optional: extract high-throughput paths to Fastify behind the same domain. |
 | **Auth tokens** | PRD: 15-minute access + 7-day refresh. **MVP:** single **httpOnly JWT cookie** (7-day TTL) to avoid refresh plumbing in the browser. | `lib/session.ts`, `middleware.ts`. | Production hardening: short-lived access token + refresh rotation, or adopt a session store (Redis). |
 | **OAuth (Google/GitHub)** | PRD **Phase 1.1** — deferred. | Email/password only: `app/signup`, `app/login`, `app/api/auth/*`. | Add OAuth providers (e.g. Auth.js) when Phase 1.1 is scheduled. |
-| **Email verification** | PRD requires verification before full activation. **Real delivery not wired** in MVP; model supports `emailVerified`. | Demo: `POST /api/auth/verify-demo`, onboarding “Mark email verified” UI. | **Wire transactional email** (PRD names **Resend** or **SendGrid**): verification link, signed token table or one-time codes, production `AUTH_BASE_URL`. |
-| **Twilio** | **Simulated:** E.164 + OTP **`000000`**; no Verify or Voice. | `app/api/onboarding/phone`, onboarding UI. | Twilio account → **Account SID**, **Auth Token** (or API key), **Verify Service** for OTP; **Programmable Voice** number + TwiML URL + status callbacks for production calls. Env-only config; never commit secrets. Alternatives exist for SMS-only (e.g. other CPaaS), but **voice** path in the PRD maps most directly to Twilio. |
-| **Stripe / Circle** | **Simulated:** plan in DB; mock checkout; no webhooks or metered usage. | `app/api/onboarding/plan`, `payment`, `complete`. | Stripe: Checkout/Customer Portal, webhooks (`invoice.payment_succeeded`, etc.), metered usage for per-call pass-through. Circle: on-chain confirmation flow and dashboard “pending” states. |
-| **Deribit DVOL / alert engine** | **Not running.** PRD: workers, Redis cooldowns, optional queue (SQS/BullMQ). | Dashboard copy only; no feed client, no dispatch loop. | **Separate service** (Node worker or `packages/*`): Deribit WebSocket/REST, threshold evaluation, Redis SETNX/cooldown, enqueue to Twilio; notify engineering on feed failure. |
-| **Database** | **SQLite + Prisma** locally; PRD production: **PostgreSQL + Redis**. | `prisma/schema.prisma`, `DATABASE_URL` file-backed SQLite. | Migrate to Postgres; add ElastiCache/Redis for sessions, cooldowns, and locks. |
-| **Custom thresholds** | PRD open question — **fixed defaults at launch**; no per-asset custom thresholds in UI (only enable/disable). | Alert prefs toggles; thresholds described in copy / PRD alignment. | Phase 1.1: admin + subscriber threshold overrides stored per asset. |
-| **SMS fallback** | PRD open question — **toggle only**; no SMS send. | `User.smsFallback`, settings UI, `app/api/settings/notifications`. | Implement after choosing provider; respect opt-in and regional rules. |
-| **Admin panel** | PRD: configurable assets/thresholds — **not built** in this pass. | — | Admin auth, CRUD for assets/default thresholds, audit log. |
-| **Monthly summary email / invoices / GDPR delete** | **Placeholders** only in UI/copy. | — | Resend/SendGrid template + monthly job; Stripe Portal links; account deletion cool-down + export job per PRD. |
-| **TCPA** | Required **consent checkbox** on signup; opt-out language in marketing/onboarding copy. | `app/signup`, landing page. | Legal review of exact copy; voice script “press 9 to opt out” in TwiML at call time. |
+| **Email verification** | PRD requires verification before activation. | **Resend wired when `RESEND_API_KEY` + `RESEND_FROM_EMAIL` are set:** signup creates `EmailVerificationToken`, sends link to `GET /api/auth/verify-email?token=…` (redirects to `/login?verify=ok`). If Resend is configured, **phone onboarding enforces** `emailVerified` (see `lib/email-enforcement.ts`). | Production DNS + domain verification in Resend; token TTL and rate limits. |
+| **Twilio** | Programmable Voice in PRD; Verify for OTP. | **Verify wired when** `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_VERIFY_SERVICE_SID` are set: `POST /api/onboarding/phone/send-code` + check on `POST /api/onboarding/phone`. Otherwise OTP **`000000`**. Voice: alert worker uses `TWILIO_FROM_NUMBER` when **`ALERT_ENGINE_DRY_RUN=false`**. | Production caller IDs (PRD §6.4); TwiML hosting; status callbacks to fill `CallEvent` accurately. |
+| **Stripe / Circle** | Subscriptions + metered usage in PRD. | **Stripe Checkout** when `STRIPE_SECRET_KEY`, `STRIPE_PRICE_MONTHLY`, `STRIPE_PRICE_ANNUAL` are set: `POST /api/onboarding/create-checkout`, return URL `GET /api/stripe/checkout-return`, **`POST /api/stripe/webhook`** (`checkout.session.completed`). Stores `stripeCustomerId` / `stripeSubscriptionId`. **USDC / Circle** still simulated on onboarding step 3. | Stripe Customer Portal, metered usage for call pass-through, `invoice.*` webhooks; Circle wallet watch. |
+| **Deribit DVOL / alert engine** | Workers, threshold evaluation, cooldowns. | **`npm run alert-engine`** — polls Deribit `public/get_volatility_index_data` for **BTC & ETH** (1h resolution), writes `FeedReading`, evaluates `lib/thresholds.ts`, applies **Redis** `SET NX` cooldown when `REDIS_URL` is set (else SQLite 24h window on `CallEvent`). **Default `ALERT_ENGINE_DRY_RUN=true`:** logs + inserts `[dry-run]` call rows instead of placing voice calls. | WebSocket feed, bundled multi-asset calls, critical-cap bypass rules, SQS/BullMQ. |
+| **Database** | **SQLite + Prisma** locally; PRD production: **PostgreSQL + Redis**. | `prisma/schema.prisma`; models include `EmailVerificationToken`, `FeedReading`, Stripe fields on `Subscription`. | Migrate to Postgres; Redis in production for cooldowns. |
+| **Custom thresholds** | PRD open question — **fixed defaults at launch**; no per-asset custom thresholds in UI (only enable/disable). | `lib/thresholds.ts` + alert toggles in dashboard/settings. | Phase 1.1: admin + subscriber threshold overrides. |
+| **SMS fallback** | PRD open question — toggle only. | `User.smsFallback`, settings UI, `app/api/settings/notifications`. | Implement SMS send path after policy review. |
+| **Admin panel** | PRD: configurable assets/thresholds — **not built** in this pass. | — | Admin auth, CRUD, audit log. |
+| **Monthly summary email / invoices / GDPR delete** | Placeholders in UI/copy. | — | Resend cron template; Stripe Portal links; GDPR jobs. |
+| **TCPA** | Consent at signup + opt-out in copy / TwiML. | `app/signup`, landing, worker `Say` includes opt-out wording stub. | Legal review of exact language. |
 
 ---
 
@@ -29,20 +29,22 @@ This document records **implementation choices** relative to **VOLCALL PRD v1.0*
 | Area | Paths |
 |------|--------|
 | Marketing landing | `app/page.tsx`, `components/marketing-nav.tsx` |
-| Auth | `app/signup`, `app/login`, `app/api/auth/*`, `lib/password.ts`, `lib/session.ts` |
-| Onboarding | `app/onboarding/**`, `app/api/onboarding/*` |
+| Auth | `app/signup`, `app/login`, `app/api/auth/*`, `lib/password.ts`, `lib/session.ts`, `app/api/auth/verify-email/route.ts` |
+| Integration flags (client) | `GET /api/public/flags` |
+| Onboarding | `app/onboarding/**`, `app/api/onboarding/*`, `app/api/stripe/checkout-return`, `app/api/stripe/webhook` |
 | Subscriber shell | `components/subscriber-layout.tsx`, `components/app-shell.tsx` |
 | Dashboard | `app/dashboard` |
 | Settings | `app/settings`, `app/api/settings/*`, `app/api/phone/[id]` |
 | Data model | `prisma/schema.prisma`, `lib/prisma.ts` |
+| Alert worker | `workers/alert-engine.ts`, `npm run alert-engine` |
 | Route protection | `middleware.ts` |
 
 ---
 
 ## Definition: “what this repo is” right now
 
-A **Phase-1-shaped product shell**: real account lifecycle, onboarding, subscription state in the database, and subscriber UI — with **external integrations stubbed** where the table above indicates. Production alerting, payments, email, and compliance automation are **follow-on work** tracked in this document.
+A **Phase-1-shaped product**: web app plus **optional production integrations** (Resend, Twilio Verify, Stripe Checkout, Deribit polling worker, Redis cooldowns) controlled entirely by **environment variables**. Circle, metering, admin, and compliance automation remain **future work**.
 
 ---
 
-*Last aligned with product review comments: April 2026.*
+*Last updated: April 2026 (integrations pass).*

@@ -9,6 +9,7 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = searchParams.get("next") || "/dashboard";
+  const verify = searchParams.get("verify");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -37,6 +38,16 @@ function LoginForm() {
 
   return (
     <form onSubmit={onSubmit} className="mt-8 space-y-4">
+      {verify === "ok" && (
+        <p className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
+          Email verified. You can sign in.
+        </p>
+      )}
+      {verify === "invalid" && (
+        <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+          Verification link is invalid or expired.
+        </p>
+      )}
       <div>
         <label className="block text-sm text-[var(--muted)]" htmlFor="email">
           Email

@@ -2,13 +2,12 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSessionFromCookies } from "@/lib/session";
-import { checkVerificationCode } from "@/lib/twilio-verify";
+import { sendVerificationCode } from "@/lib/twilio-verify";
 import { isTwilioVerifyConfigured } from "@/lib/integrations";
 import { enforceEmailVerification } from "@/lib/email-enforcement";
 
 const schema = z.object({
   e164: z.string().min(8).max(20),
-  otp: z.string().length(6),
 });
 
 export async function POST(request: Request) {
@@ -21,7 +20,7 @@ export async function POST(request: Request) {
     const u = await prisma.user.findUnique({ where: { id: session.sub } });
     if (!u?.emailVerified) {
       return NextResponse.json(
-        { error: "Verify your email before adding a phone number." },
+        { error: "Verify your email before requesting an SMS code." },
         { status: 400 },
       );
     }
@@ -36,43 +35,20 @@ export async function POST(request: Request) {
     );
   }
 
-  const { e164, otp } = parsed.data;
-
-  let verified = false;
-  if (isTwilioVerifyConfigured()) {
-    verified = await checkVerificationCode(e164, otp);
-  } else if (otp === "000000") {
-    verified = true;
-  }
-
-  if (!verified) {
+  if (!isTwilioVerifyConfigured()) {
     return NextResponse.json(
       {
-        error:
-          "Invalid code. With Twilio, request a new SMS from “Send code”. In demo mode use 000000.",
+        mode: "demo",
+        message: "Twilio not configured — use OTP 000000.",
       },
-      { status: 400 },
+      { status: 200 },
     );
   }
 
-  const count = await prisma.phoneNumber.count({
-    where: { userId: session.sub },
-  });
-  if (count >= 5) {
-    return NextResponse.json(
-      { error: "Maximum five numbers per account." },
-      { status: 400 },
-    );
+  const res = await sendVerificationCode(parsed.data.e164);
+  if (!res.ok) {
+    return NextResponse.json({ error: res.message }, { status: 400 });
   }
 
-  await prisma.phoneNumber.create({
-    data: {
-      userId: session.sub,
-      e164,
-      verified: true,
-      label: `Line ${count + 1}`,
-    },
-  });
-
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, mode: "twilio" });
 }
