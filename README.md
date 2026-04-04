@@ -33,7 +33,7 @@ cp .env.example .env
 # Set neon_storage_POSTGRES_URL (PostgreSQL), JWT_SECRET (min 16 chars), NEXT_PUBLIC_APP_URL, and any integration keys.
 
 npm install
-npx prisma db push
+# Optional: npx prisma db push — or rely on Vercel build (runs db push when neon_storage_POSTGRES_URL is set)
 npm run dev
 ```
 

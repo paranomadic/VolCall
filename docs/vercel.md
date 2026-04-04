@@ -38,14 +38,16 @@ Otherwise add it manually:
 
    Check **Production** and **Preview** (and Development if you use it), then **Save**. **Redeploy** after changes.
 
-3. Apply the schema **once** from your laptop (same URL as in Vercel):
+3. **Schema on deploy:** `npm run build` runs `prisma db push` when **`neon_storage_POSTGRES_URL`** is set. On Vercel, that variable must be available **during the build** (it usually is if defined under **Settings → Environment Variables** for Production). If signup still reports missing tables after deploy, run `npx prisma db push` locally with the same URL once, or confirm the Neon integration exposes the URL to builds—not only serverless runtime.
+
+   To apply the schema manually from your laptop:
 
    ```bash
    export neon_storage_POSTGRES_URL="postgresql://..."
    npx prisma db push
    ```
 
-   For production long-term, switch to [Prisma Migrate](https://www.prisma.io/docs/guides/migrate) instead of `db push`.
+   For production long-term, consider [Prisma Migrate](https://www.prisma.io/docs/guides/migrate) instead of `db push` in the build.
 
 ## 3. Required app environment variables
 
