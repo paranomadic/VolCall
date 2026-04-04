@@ -1,18 +1,11 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { jwtVerify } from "jose";
+import { getJwtSecretForVerify } from "@/lib/jwt-secret";
 
 const COOKIE = "volcall_session";
 
 const protectedPrefixes = ["/dashboard", "/onboarding", "/settings"];
-
-function getSecret(): Uint8Array {
-  const s = process.env.JWT_SECRET;
-  if (!s || s.length < 16) {
-    return new TextEncoder().encode("dev-insecure-secret-change-me");
-  }
-  return new TextEncoder().encode(s);
-}
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -27,7 +20,7 @@ export async function middleware(request: NextRequest) {
   }
 
   try {
-    await jwtVerify(token, getSecret());
+    await jwtVerify(token, getJwtSecretForVerify());
     return NextResponse.next();
   } catch {
     const login = new URL("/login", request.url);

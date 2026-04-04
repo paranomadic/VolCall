@@ -22,14 +22,28 @@ function LoginForm() {
     const res = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
       body: JSON.stringify({ email, password }),
     });
     setLoading(false);
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      setError(
-        typeof data.error === "string" ? data.error : "Invalid credentials.",
-      );
+      const err = data.error;
+      if (typeof err === "string") {
+        setError(err);
+        return;
+      }
+      if (err && typeof err === "object") {
+        const first = Object.values(err as Record<string, unknown>)
+          .flat()
+          .find((v) => typeof v === "string" || Array.isArray(v));
+        const msg = Array.isArray(first) ? first[0] : first;
+        setError(
+          typeof msg === "string" ? msg : "Invalid email or password.",
+        );
+        return;
+      }
+      setError("Invalid email or password.");
       return;
     }
     router.push(next);

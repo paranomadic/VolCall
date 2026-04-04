@@ -4,10 +4,12 @@ Volatility-triggered phone call alerts — web app aligned with **VOLCALL PRD v1
 
 **Product decisions, PRD gaps, and a file map:** see [docs/decisions.md](docs/decisions.md).
 
+**Deploy on Vercel (connect GitHub, env vars, Postgres):** see [docs/vercel.md](docs/vercel.md).
+
 ## Stack
 
 - **Next.js 15** (App Router), **React 19**, **Tailwind CSS 4**
-- **Prisma** + **SQLite** (local dev; use PostgreSQL in production)
+- **Prisma** + **PostgreSQL** (required for Vercel; use Neon/Supabase/local Docker for dev)
 - **bcrypt** passwords, **jose** JWT session cookie
 - **Integrations** (opt-in via `.env`): **Resend** (email verification), **Twilio Verify** (SMS OTP), **Stripe Checkout** (subscription start + webhook), **Deribit** + **Redis** (alert worker). Without keys, the app falls back to the original demo paths (`000000` OTP, simulated checkout, etc.).
 
@@ -28,7 +30,7 @@ Use [Stripe CLI](https://stripe.com/docs/stripe-cli) to forward `checkout.sessio
 
 ```bash
 cp .env.example .env
-# Set JWT_SECRET (min 16 chars), NEXT_PUBLIC_APP_URL, and any integration keys you need.
+# Set DATABASE_URL (PostgreSQL), JWT_SECRET (min 16 chars), NEXT_PUBLIC_APP_URL, and any integration keys.
 
 npm install
 npx prisma db push
@@ -36,6 +38,8 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
+
+**Local database:** use a free [Neon](https://neon.tech) branch, [Supabase](https://supabase.com), or `postgresql` in Docker — not a file-backed SQLite URL.
 
 ## Demo flows
 
