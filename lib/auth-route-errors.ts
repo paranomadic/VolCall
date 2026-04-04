@@ -1,5 +1,8 @@
 import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
+import { PRISMA_DATABASE_URL_ENV } from "@/lib/db-env";
+
+const ENV_NOT_FOUND = `Environment variable not found: ${PRISMA_DATABASE_URL_ENV}`;
 
 /**
  * Maps auth-route failures to safe, actionable messages. Full error is always logged server-side.
@@ -14,7 +17,7 @@ function isPrismaInitError(e: unknown): boolean {
     return true;
   }
   const msg = e instanceof Error ? e.message : String(e);
-  return msg.includes("Environment variable not found: DATABASE_URL");
+  return msg.includes(ENV_NOT_FOUND);
 }
 
 export function authRouteErrorResponse(
@@ -24,11 +27,11 @@ export function authRouteErrorResponse(
   console.error(`[${logLabel}]`, e);
 
   const msgEarly = e instanceof Error ? e.message : String(e);
-  if (msgEarly.includes("Environment variable not found: DATABASE_URL")) {
+  if (msgEarly.includes(ENV_NOT_FOUND)) {
     return NextResponse.json(
       {
         error:
-          "DATABASE_URL is not set for this deployment. In Vercel: Project → Settings → Environment Variables → add DATABASE_URL (PostgreSQL connection string, e.g. from Neon or Supabase). Enable it for Production and Preview, save, then Redeploy.",
+          `${PRISMA_DATABASE_URL_ENV} is not set for this deployment. In Vercel, Neon Storage usually injects this automatically; or add it under Settings → Environment Variables for Production and Preview, then Redeploy.`,
       },
       { status: 503 },
     );
@@ -40,7 +43,7 @@ export function authRouteErrorResponse(
         return NextResponse.json(
           {
             error:
-              "Cannot reach the database. Check DATABASE_URL and that Postgres allows connections from your host (e.g. Vercel IPs or SSL mode).",
+              `Cannot reach the database. Check ${PRISMA_DATABASE_URL_ENV} and that Postgres allows connections from your host (e.g. SSL mode).`,
           },
           { status: 503 },
         );
@@ -49,7 +52,7 @@ export function authRouteErrorResponse(
         return NextResponse.json(
           {
             error:
-              "Database authentication failed. Verify DATABASE_URL user, password, and database name.",
+              `Database authentication failed. Verify ${PRISMA_DATABASE_URL_ENV} user, password, and database name.`,
           },
           { status: 503 },
         );
@@ -63,7 +66,7 @@ export function authRouteErrorResponse(
         return NextResponse.json(
           {
             error:
-              "Database schema is missing. Run: npx prisma db push (with your production DATABASE_URL in the environment).",
+              `Database schema is missing. Run: npx prisma db push (with ${PRISMA_DATABASE_URL_ENV} set to your Postgres URL).`,
           },
           { status: 503 },
         );
@@ -81,7 +84,7 @@ export function authRouteErrorResponse(
     return NextResponse.json(
       {
         error:
-          "Cannot open the database. Confirm DATABASE_URL is a valid postgresql:// URL in Vercel Environment Variables, then Redeploy.",
+          `Cannot open the database. Confirm ${PRISMA_DATABASE_URL_ENV} is a valid postgresql:// URL in Vercel Environment Variables, then Redeploy.`,
       },
       { status: 503 },
     );
@@ -111,7 +114,7 @@ export function authRouteErrorResponse(
     return NextResponse.json(
       {
         error:
-          "Database network error. Confirm DATABASE_URL host, port, and that the DB accepts remote connections.",
+          `Database network error. Confirm ${PRISMA_DATABASE_URL_ENV} host, port, and that the DB accepts remote connections.`,
       },
       { status: 503 },
     );
@@ -129,7 +132,7 @@ export function authRouteErrorResponse(
   return NextResponse.json(
     {
       error:
-        "Server error. On Vercel: set JWT_SECRET (16+ characters) and PostgreSQL DATABASE_URL; run `npx prisma db push` against that database. Open Deployment → Logs for the full error.",
+        `Server error. On Vercel: set JWT_SECRET (16+ characters) and Postgres URL in ${PRISMA_DATABASE_URL_ENV}; run npx prisma db push against that database. Open Deployment → Logs for the full error.`,
     },
     { status: 500 },
   );

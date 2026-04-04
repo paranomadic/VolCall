@@ -2,6 +2,8 @@
 
 You connect the GitHub repo in the **Vercel dashboard** (this cannot be done from code alone). This doc lists the exact clicks and the settings VolCall expects.
 
+Prisma reads the Postgres URL from **`neon_storage_POSTGRES_URL`** (matches Vercel Neon Storage / the env name used in this repo). See `lib/db-env.ts` and `prisma/schema.prisma`.
+
 ## 1. Connect GitHub to Vercel
 
 1. Sign in at [vercel.com](https://vercel.com).
@@ -23,21 +25,23 @@ You connect the GitHub repo in the **Vercel dashboard** (this cannot be done fro
 
 ## 2. Database (required)
 
-**Without `DATABASE_URL` in Vercel, signup and all Prisma routes fail** with `Environment variable not found: DATABASE_URL`. This is configuration, not an application bug.
+**Without `neon_storage_POSTGRES_URL`, signup and all Prisma routes fail** with `Environment variable not found: neon_storage_POSTGRES_URL`. This is configuration, not an application bug.
 
-Vercel serverless **cannot** use a local SQLite file for durable storage. Use a hosted Postgres (for example [Neon](https://neon.tech), [Supabase](https://supabase.com), or [Vercel Postgres](https://vercel.com/docs/storage/vercel-postgres)).
+If you use **Vercel Neon Storage**, the integration usually creates **`neon_storage_POSTGRES_URL`** for you—ensure the storage is **linked** to the project and the variable appears under **Settings → Environment Variables**.
 
-1. Create a database and copy the **connection string** (SSL usually required).
+Otherwise add it manually:
+
+1. Create a database (e.g. [Neon](https://neon.tech), [Supabase](https://supabase.com)) and copy the **connection string** (SSL often `?sslmode=require`).
 2. In Vercel → your project → **Settings → Environment Variables**, add:
 
-   **`DATABASE_URL`** = `postgresql://...` (your provider’s URL)
+   **`neon_storage_POSTGRES_URL`** = `postgresql://...`
 
-   Check the boxes for **Production** and **Preview** (and Development if you use it), then **Save**. **Redeploy** — new variables are not always picked up by old deployments.
+   Check **Production** and **Preview** (and Development if you use it), then **Save**. **Redeploy** after changes.
 
-3. After the first deploy, apply the schema **once** from your laptop (or CI) against that same URL:
+3. Apply the schema **once** from your laptop (same URL as in Vercel):
 
    ```bash
-   export DATABASE_URL="postgresql://..."
+   export neon_storage_POSTGRES_URL="postgresql://..."
    npx prisma db push
    ```
 
@@ -69,7 +73,7 @@ Point Stripe at your live URL:
 
 ## 5. Alert engine
 
-`npm run alert-engine` is a **long-running Node process**. Vercel does not run it. Host it elsewhere (Railway, Fly.io, ECS, a small VPS) with the same `DATABASE_URL` and optional `REDIS_URL`, or move that workload to a queue + cron later.
+`npm run alert-engine` is a **long-running Node process**. Vercel does not run it. Host it elsewhere (Railway, Fly.io, ECS, a small VPS) with the same **`neon_storage_POSTGRES_URL`** and optional `REDIS_URL`, or move that workload to a queue + cron later.
 
 ## 6. Where to see builds
 

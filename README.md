@@ -16,7 +16,7 @@ Volatility-triggered phone call alerts — web app aligned with **VOLCALL PRD v1
 ### Alert engine (separate process)
 
 ```bash
-# Requires DATABASE_URL; optional REDIS_URL, Twilio voice vars — see .env.example
+# Requires neon_storage_POSTGRES_URL; optional REDIS_URL, Twilio voice vars — see .env.example
 npm run alert-engine
 ```
 
@@ -30,7 +30,7 @@ Use [Stripe CLI](https://stripe.com/docs/stripe-cli) to forward `checkout.sessio
 
 ```bash
 cp .env.example .env
-# Set DATABASE_URL (PostgreSQL), JWT_SECRET (min 16 chars), NEXT_PUBLIC_APP_URL, and any integration keys.
+# Set neon_storage_POSTGRES_URL (PostgreSQL), JWT_SECRET (min 16 chars), NEXT_PUBLIC_APP_URL, and any integration keys.
 
 npm install
 npx prisma db push
