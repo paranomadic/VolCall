@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { authRouteErrorResponse } from "@/lib/auth-route-errors";
 import { verifyPassword } from "@/lib/password";
 import {
   applySessionCookie,
@@ -32,16 +33,6 @@ export async function POST(request: Request) {
     applySessionCookie(res, token);
     return res;
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Server error";
-    console.error("[auth/login]", e);
-    return NextResponse.json(
-      {
-        error:
-          msg.includes("JWT_SECRET") || msg.includes("Prisma")
-            ? "Server misconfiguration or database error. Check DATABASE_URL and JWT_SECRET."
-            : "Something went wrong. Try again.",
-      },
-      { status: 500 },
-    );
+    return authRouteErrorResponse(e, "auth/login");
   }
 }

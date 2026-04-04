@@ -1,7 +1,7 @@
 import { randomBytes } from "crypto";
 import { NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { authRouteErrorResponse } from "@/lib/auth-route-errors";
 import { sendVerificationEmail } from "@/lib/email";
 import { hashPassword } from "@/lib/password";
 import {
@@ -64,31 +64,7 @@ export async function POST(request: Request) {
     applySessionCookie(res, token);
     return res;
   } catch (e) {
-    console.error("[auth/signup]", e);
-    if (e instanceof Prisma.PrismaClientKnownRequestError) {
-      if (e.code === "P1001") {
-        return NextResponse.json(
-          {
-            error:
-              "Database unreachable. Set DATABASE_URL to PostgreSQL and run npx prisma db push.",
-          },
-          { status: 503 },
-        );
-      }
-    }
-    const msg = e instanceof Error ? e.message : "";
-    let error = "Something went wrong. Try again.";
-    if (msg.includes("JWT_SECRET")) {
-      error = "Set JWT_SECRET to at least 16 characters in production.";
-    } else if (
-      msg.includes("Prisma") ||
-      msg.includes("denied") ||
-      msg.includes("ECONNREFUSED")
-    ) {
-      error =
-        "Database error. Confirm DATABASE_URL and that the schema is applied (prisma db push).";
-    }
-    return NextResponse.json({ error }, { status: 500 });
+    return authRouteErrorResponse(e, "auth/signup");
   }
 }
 
