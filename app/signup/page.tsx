@@ -20,16 +20,31 @@ export default function SignupPage() {
     const res = await fetch("/api/auth/signup", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
       body: JSON.stringify({ email, password, tcpaConsent: tcpa }),
     });
     const data = await res.json().catch(() => ({}));
     setLoading(false);
     if (!res.ok) {
-      setError(
-        typeof data.error === "string"
-          ? data.error
-          : "Check fields and try again.",
-      );
+      const err = data.error;
+      if (typeof err === "string") {
+        setError(err);
+        return;
+      }
+      if (err && typeof err === "object") {
+        const flat = Object.values(err as Record<string, unknown>).flat();
+        const first = flat.find(
+          (v) => typeof v === "string" || Array.isArray(v),
+        );
+        const msg = Array.isArray(first) ? first[0] : first;
+        setError(
+          typeof msg === "string"
+            ? msg
+            : "Check fields (password needs 8+ chars, one uppercase, one number).",
+        );
+        return;
+      }
+      setError("Check fields and try again.");
       return;
     }
     router.push("/onboarding/1");
