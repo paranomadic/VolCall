@@ -4,11 +4,35 @@ import { NextResponse } from "next/server";
 /**
  * Maps auth-route failures to safe, actionable messages. Full error is always logged server-side.
  */
+function isPrismaInitError(e: unknown): boolean {
+  if (e instanceof Prisma.PrismaClientInitializationError) return true;
+  if (
+    typeof e === "object" &&
+    e !== null &&
+    (e as { name?: string }).name === "PrismaClientInitializationError"
+  ) {
+    return true;
+  }
+  const msg = e instanceof Error ? e.message : String(e);
+  return msg.includes("Environment variable not found: DATABASE_URL");
+}
+
 export function authRouteErrorResponse(
   e: unknown,
   logLabel: string,
 ): NextResponse {
   console.error(`[${logLabel}]`, e);
+
+  const msgEarly = e instanceof Error ? e.message : String(e);
+  if (msgEarly.includes("Environment variable not found: DATABASE_URL")) {
+    return NextResponse.json(
+      {
+        error:
+          "DATABASE_URL is not set for this deployment. In Vercel: Project → Settings → Environment Variables → add DATABASE_URL (PostgreSQL connection string, e.g. from Neon or Supabase). Enable it for Production and Preview, save, then Redeploy.",
+      },
+      { status: 503 },
+    );
+  }
 
   if (e instanceof Prisma.PrismaClientKnownRequestError) {
     switch (e.code) {
@@ -53,11 +77,11 @@ export function authRouteErrorResponse(
     }
   }
 
-  if (e instanceof Prisma.PrismaClientInitializationError) {
+  if (isPrismaInitError(e)) {
     return NextResponse.json(
       {
         error:
-          "Cannot open database connection. Use a postgresql:// DATABASE_URL and ensure the database exists.",
+          "Cannot open the database. Confirm DATABASE_URL is a valid postgresql:// URL in Vercel Environment Variables, then Redeploy.",
       },
       { status: 503 },
     );

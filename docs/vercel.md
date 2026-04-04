@@ -23,12 +23,16 @@ You connect the GitHub repo in the **Vercel dashboard** (this cannot be done fro
 
 ## 2. Database (required)
 
+**Without `DATABASE_URL` in Vercel, signup and all Prisma routes fail** with `Environment variable not found: DATABASE_URL`. This is configuration, not an application bug.
+
 Vercel serverless **cannot** use a local SQLite file for durable storage. Use a hosted Postgres (for example [Neon](https://neon.tech), [Supabase](https://supabase.com), or [Vercel Postgres](https://vercel.com/docs/storage/vercel-postgres)).
 
 1. Create a database and copy the **connection string** (SSL usually required).
 2. In Vercel → your project → **Settings → Environment Variables**, add:
 
    **`DATABASE_URL`** = `postgresql://...` (your provider’s URL)
+
+   Check the boxes for **Production** and **Preview** (and Development if you use it), then **Save**. **Redeploy** — new variables are not always picked up by old deployments.
 
 3. After the first deploy, apply the schema **once** from your laptop (or CI) against that same URL:
 
