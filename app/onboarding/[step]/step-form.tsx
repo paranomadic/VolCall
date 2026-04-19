@@ -9,15 +9,18 @@ type Phone = { id: string; e164: string; enabled: boolean };
 type Flags = {
   emailVerification: boolean;
   twilioVerify: boolean;
+  lemonSqueezyCheckout: boolean;
   stripeCheckout: boolean;
 };
 
 export function OnboardingStepForm({
   step,
   emailVerified,
+  awaitingLemonReturn,
 }: {
   step: number;
   emailVerified: boolean;
+  awaitingLemonReturn?: boolean;
 }) {
   const router = useRouter();
   const [phones, setPhones] = useState<Phone[]>([]);
@@ -50,10 +53,34 @@ export function OnboardingStepForm({
         setFlags({
           emailVerification: false,
           twilioVerify: false,
+          lemonSqueezyCheckout: false,
           stripeCheckout: false,
         }),
       );
   }, []);
+
+  useEffect(() => {
+    if (!awaitingLemonReturn) return;
+    let cancelled = false;
+    const id = window.setInterval(() => {
+      void (async () => {
+        const res = await fetch("/api/me");
+        if (!res.ok || cancelled) return;
+        const data = await res.json().catch(() => null);
+        const os = data?.user?.subscription?.onboardingStep;
+        if (typeof os === "number" && os >= 3) {
+          router.push("/onboarding/4");
+          router.refresh();
+        }
+      })();
+    }, 1500);
+    const stop = window.setTimeout(() => window.clearInterval(id), 120_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+      window.clearTimeout(stop);
+    };
+  }, [awaitingLemonReturn, router]);
 
   async function verifyEmailDemo() {
     await fetch("/api/auth/verify-demo", { method: "POST" });
@@ -150,7 +177,7 @@ export function OnboardingStepForm({
     router.refresh();
   }
 
-  async function startStripeCheckout() {
+  async function startHostedCheckout() {
     setError(null);
     setLoading(true);
     const res = await fetch("/api/onboarding/create-checkout", {
@@ -159,7 +186,10 @@ export function OnboardingStepForm({
     const data = await res.json().catch(() => ({}));
     setLoading(false);
     if (!res.ok || !data.url) {
-      setError(data.error ?? "Could not start Stripe Checkout.");
+      setError(
+        data.error ??
+          "Could not start checkout.",
+      );
       return;
     }
     window.location.href = data.url as string;
@@ -341,14 +371,20 @@ export function OnboardingStepForm({
   }
 
   if (step === 3) {
+    const lemonOn = flags?.lemonSqueezyCheckout;
     const stripeOn = flags?.stripeCheckout;
+    const hostedOn = Boolean(lemonOn || stripeOn);
     return (
       <div>
         <h1 className="text-xl font-semibold">Payment</h1>
         <p className="mt-2 text-sm text-[var(--muted)]">
-          {stripeOn
-            ? "Pay with Stripe Checkout (cards, Apple Pay, Google Pay where enabled). USDC annual still uses the simulated path until Circle is wired."
-            : "Configure STRIPE_SECRET_KEY plus price IDs to enable Checkout; otherwise use the simulator below."}
+          {awaitingLemonReturn
+            ? "Confirming your Lemon Squeezy payment… you’ll move to the next step automatically when the webhook arrives."
+            : lemonOn
+              ? "Pay with Lemon Squeezy (primary). USDC annual still uses the simulated path until Circle is wired."
+              : stripeOn
+                ? "Pay with Stripe Checkout (cards, Apple Pay, Google Pay where enabled). USDC annual still uses the simulated path until Circle is wired."
+                : "Configure Lemon Squeezy or Stripe in the environment to enable hosted checkout; otherwise use the simulator below."}
         </p>
         {error && (
           <p className="mb-4 text-sm text-red-400" role="alert">
@@ -356,13 +392,17 @@ export function OnboardingStepForm({
           </p>
         )}
         <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-          {stripeOn && (
+          {hostedOn && (
             <Button
               type="button"
-              disabled={loading}
-              onClick={() => void startStripeCheckout()}
+              disabled={loading || Boolean(awaitingLemonReturn)}
+              onClick={() => void startHostedCheckout()}
             >
-              {loading ? "Redirecting…" : "Pay with Stripe Checkout"}
+              {loading
+                ? "Redirecting…"
+                : lemonOn
+                  ? "Pay with Lemon Squeezy"
+                  : "Pay with Stripe Checkout"}
             </Button>
           )}
           <Button

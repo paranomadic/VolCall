@@ -18,6 +18,13 @@ export function MarketingNav() {
             FAQ
           </a>
           <Link
+            href="/admin"
+            className="hover:text-[var(--foreground)]"
+            title="Admin console (login required)"
+          >
+            Admin
+          </Link>
+          <Link
             href="/login"
             className="hover:text-[var(--foreground)]"
           >

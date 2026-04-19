@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import {
+  isLemonSqueezyConfigured,
   isResendConfigured,
   isStripeCheckoutConfigured,
   isTwilioVerifyConfigured,
@@ -9,6 +10,7 @@ export async function GET() {
   return NextResponse.json({
     emailVerification: isResendConfigured(),
     twilioVerify: isTwilioVerifyConfigured(),
+    lemonSqueezyCheckout: isLemonSqueezyConfigured(),
     stripeCheckout: isStripeCheckoutConfigured(),
   });
 }

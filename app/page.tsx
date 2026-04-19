@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { MarketingNav } from "@/components/marketing-nav";
+import { getAppUrl } from "@/lib/app-url";
 
 export default function HomePage() {
+  const adminAbsolute = `${getAppUrl()}/admin`;
   return (
     <div className="min-h-screen bg-[radial-gradient(ellipse_120%_80%_at_50%_-20%,rgba(34,211,166,0.12),transparent)]">
       <MarketingNav />
@@ -178,6 +180,19 @@ export default function HomePage() {
 
       <footer className="border-t border-[var(--border)] py-10 text-center text-sm text-[var(--muted)]">
         <p>VolCall PRD v1.0 · Demo web app · Not financial advice.</p>
+        <p className="mt-3">
+          <Link
+            href="/admin"
+            className="text-[var(--foreground)] underline-offset-4 hover:underline"
+            title="Admin console — thresholds, comp access, test calls (login required)"
+          >
+            Admin console
+          </Link>
+          <span className="mx-2 text-[var(--border)]">·</span>
+          <span className="text-xs">
+            <span className="font-mono text-[var(--foreground)]">{adminAbsolute}</span>
+          </span>
+        </p>
       </footer>
     </div>
   );

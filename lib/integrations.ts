@@ -21,3 +21,22 @@ export function isStripeCheckoutConfigured(): boolean {
       process.env.STRIPE_PRICE_ANNUAL,
   );
 }
+
+/** Primary billing: Lemon Squeezy Checkout (variant IDs per plan + store). */
+export function isLemonSqueezyConfigured(): boolean {
+  return Boolean(
+    process.env.LEMONSQUEEZY_API_KEY &&
+      process.env.LEMONSQUEEZY_STORE_ID &&
+      process.env.LEMONSQUEEZY_VARIANT_MONTHLY &&
+      process.env.LEMONSQUEEZY_VARIANT_ANNUAL,
+  );
+}
+
+/** Primary IVR/voice for alert calls: Vapi outbound (Twilio remains fallback). */
+export function isVapiVoiceConfigured(): boolean {
+  return Boolean(
+    process.env.VAPI_API_KEY &&
+      process.env.VAPI_ASSISTANT_ID &&
+      process.env.VAPI_PHONE_NUMBER_ID,
+  );
+}

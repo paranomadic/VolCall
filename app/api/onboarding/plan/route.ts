@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSessionFromCookies } from "@/lib/session";
+import { isLemonSqueezyConfigured } from "@/lib/integrations";
 
 const schema = z.object({
   plan: z.enum(["MONTHLY", "ANNUAL", "ANNUAL_CRYPTO"]),
@@ -48,7 +49,9 @@ export async function POST(request: Request) {
       paymentMethodLabel:
         parsed.data.plan === "ANNUAL_CRYPTO"
           ? "USDC (pending)"
-          : "Card (Stripe Checkout — demo)",
+          : isLemonSqueezyConfigured()
+            ? "Card (Lemon Squeezy — demo)"
+            : "Card (Stripe Checkout — demo)",
     },
   });
 

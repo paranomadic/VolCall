@@ -3,19 +3,16 @@ import { prisma } from "@/lib/prisma";
 import { getSessionFromCookies } from "@/lib/session";
 import { getAppUrl } from "@/lib/app-url";
 import { getStripe, priceIdForPlan } from "@/lib/stripe-server";
-import { isStripeCheckoutConfigured } from "@/lib/integrations";
+import {
+  isLemonSqueezyConfigured,
+  isStripeCheckoutConfigured,
+} from "@/lib/integrations";
+import { createLemonCheckout, lemonVariantIdForPlan } from "@/lib/lemonsqueezy";
 
 export async function POST() {
   const session = await getSessionFromCookies();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  if (!isStripeCheckoutConfigured()) {
-    return NextResponse.json(
-      { error: "Stripe is not configured." },
-      { status: 503 },
-    );
   }
 
   const sub = await prisma.subscription.findUnique({
@@ -36,14 +33,42 @@ export async function POST() {
     );
   }
 
+  const base = getAppUrl();
+
+  if (isLemonSqueezyConfigured()) {
+    const variantId = lemonVariantIdForPlan(sub.plan);
+    if (!variantId) {
+      return NextResponse.json(
+        { error: "Missing Lemon Squeezy variant ID for this plan." },
+        { status: 500 },
+      );
+    }
+    const redirectUrl = `${base}/onboarding/3?ls=return`;
+    const result = await createLemonCheckout({
+      variantId,
+      userId: sub.userId,
+      email: sub.user.email,
+      redirectUrl,
+    });
+    if ("error" in result) {
+      return NextResponse.json({ error: result.error }, { status: 502 });
+    }
+    return NextResponse.json({ url: result.url, provider: "lemonsqueezy" });
+  }
+
+  if (!isStripeCheckoutConfigured()) {
+    return NextResponse.json(
+      { error: "No payment provider is configured." },
+      { status: 503 },
+    );
+  }
+
   const priceId = priceIdForPlan(sub.plan);
   if (!priceId) {
     return NextResponse.json({ error: "Missing Stripe price ID." }, { status: 500 });
   }
 
   const stripe = getStripe()!;
-  const base = getAppUrl();
-
   const checkout = await stripe.checkout.sessions.create({
     mode: "subscription",
     customer_email: sub.user.email,
@@ -61,5 +86,5 @@ export async function POST() {
     );
   }
 
-  return NextResponse.json({ url: checkout.url });
+  return NextResponse.json({ url: checkout.url, provider: "stripe" });
 }

@@ -3,17 +3,16 @@
  * Run: npm run alert-engine
  *
  * Polls Deribit DVOL, evaluates PRD default thresholds, applies Redis cooldown when REDIS_URL
- * is set, and logs / optionally places Twilio voice calls when ALERT_ENGINE_DRY_RUN is not "true".
+ * is set, and logs / optionally places Vapi (primary) or Twilio voice calls when ALERT_ENGINE_DRY_RUN is not "true".
  */
 
-import twilio from "twilio";
 import { prisma } from "../lib/prisma";
 import { fetchDvol } from "../lib/deribit";
-import {
-  classifyForAsset,
-  shouldAlert,
-} from "../lib/thresholds";
+import { shouldAlert } from "../lib/thresholds";
+import { classifyForAssetFromSettings } from "../lib/thresholds-configurable";
+import { getEngineSettings } from "../lib/engine-settings";
 import { canPlaceCallCooldown, getRedis } from "../lib/redis";
+import { placeOutboundVoiceAlert } from "../lib/voice-outbound";
 
 const POLL_MS = 60_000;
 const ASSETS = ["BTC", "ETH"] as const;
@@ -40,30 +39,23 @@ async function maybeCallUser(params: {
   dvol: number;
   band: string;
 }) {
-  const from = process.env.TWILIO_FROM_NUMBER;
-  if (!from) {
-    console.warn(
-      `[volcall] skip voice: set TWILIO_FROM_NUMBER (user ${params.userId})`,
+  const out = await placeOutboundVoiceAlert({
+    e164: params.e164,
+    asset: params.asset,
+    dvol: params.dvol,
+    band: params.band,
+  });
+  if (out.ok) {
+    console.info(
+      `[volcall] ${out.channel} call ${out.id ?? "?"} -> ${params.e164}`,
     );
     return;
   }
-  const client = twilio(
-    process.env.TWILIO_ACCOUNT_SID!,
-    process.env.TWILIO_AUTH_TOKEN!,
-  );
-  const twiml = `<Response><Say voice="Polly.Joanna">Hello, this is VolCall. ${params.asset} implied volatility is at ${params.dvol.toFixed(
-    1,
-  )}, band ${params.band}. Please review your positions. Press 9 to opt out on future marketing calls where allowed.</Say></Response>`;
-
-  const call = await client.calls.create({
-    to: params.e164,
-    from,
-    twiml,
-  });
-  console.info(`[volcall] twilio call ${call.sid} -> ${params.e164}`);
+  console.warn(`[volcall] skip voice: ${out.message} (user ${params.userId})`);
 }
 
 async function tick() {
+  const settings = await getEngineSettings();
   for (const asset of ASSETS) {
     let dvol: number | null = null;
     try {
@@ -78,7 +70,7 @@ async function tick() {
     }
 
     await recordReading(asset, dvol);
-    const band = classifyForAsset(asset, dvol);
+    const band = classifyForAssetFromSettings(asset, dvol, settings);
     if (!shouldAlert(band)) {
       continue;
     }

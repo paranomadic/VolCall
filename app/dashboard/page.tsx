@@ -5,6 +5,7 @@ import Link from "next/link";
 
 type Me = {
   email: string;
+  isAdmin?: boolean;
   emailVerified: boolean;
   subscription: {
     state: string;
@@ -69,10 +70,20 @@ export default function DashboardPage() {
   return (
     <div className="space-y-10">
       <div>
-        <h1 className="text-2xl font-semibold">Subscriber dashboard</h1>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <h1 className="text-2xl font-semibold">Subscriber dashboard</h1>
+          {me.isAdmin && (
+            <Link
+              href="/admin"
+              className="text-sm font-medium text-[var(--accent)] hover:underline"
+            >
+              Admin
+            </Link>
+          )}
+        </div>
         <p className="mt-1 text-sm text-[var(--muted)]">
-          Live DVOL feed and Twilio dispatch run in production workers — this UI
-          is wired to your account state.
+          Live DVOL feed and alert workers run outside this UI — the dashboard
+          reflects your account state.
         </p>
       </div>
 
@@ -102,7 +113,8 @@ export default function DashboardPage() {
             </div>
           </dl>
           <p className="mt-4 text-xs text-[var(--muted)]">
-            Manage or cancel in production via Stripe Customer Portal.
+            Manage or cancel in production via your billing provider (Lemon Squeezy
+            or Stripe Customer Portal).
           </p>
         </div>
 
@@ -160,8 +172,8 @@ export default function DashboardPage() {
       <section className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6">
         <h2 className="font-medium">Alert settings</h2>
         <p className="mt-1 text-sm text-[var(--muted)]">
-          Default thresholds from the PRD (DVOL / realised vol). Custom thresholds
-          ship in Phase 1.1.
+          Global DVOL band cutoffs are configurable in Admin (workers read them
+          from the database).
         </p>
         <ul className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {me.alertPrefs.map((a) => (

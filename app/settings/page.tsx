@@ -95,7 +95,7 @@ export default function SettingsPage() {
         <h1 className="text-2xl font-semibold">Settings</h1>
         <p className="mt-1 text-sm text-[var(--muted)]">
           Account email/password changes and invoice PDFs would connect to your
-          auth service and Stripe in production.
+          auth service and your billing provider in production.
         </p>
       </div>
 

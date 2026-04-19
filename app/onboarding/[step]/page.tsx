@@ -4,10 +4,14 @@ import { OnboardingStepForm } from "./step-form";
 
 export default async function OnboardingStepPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ step: string }>;
+  searchParams?: Promise<{ ls?: string }>;
 }) {
   const { step: raw } = await params;
+  const sp = (await searchParams) ?? {};
+  const awaitingLemonReturn = sp.ls === "return";
   const n = parseInt(raw, 10);
   if (Number.isNaN(n) || n < 1 || n > 4) redirect("/onboarding/1");
 
@@ -41,7 +45,11 @@ export default async function OnboardingStepPage({
           </li>
         ))}
       </ol>
-      <OnboardingStepForm step={n} emailVerified={user.emailVerified} />
+      <OnboardingStepForm
+        step={n}
+        emailVerified={user.emailVerified}
+        awaitingLemonReturn={n === 3 && awaitingLemonReturn}
+      />
     </div>
   );
 }

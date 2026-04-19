@@ -5,7 +5,7 @@ import { getJwtSecretForVerify } from "@/lib/jwt-secret";
 
 const COOKIE = "volcall_session";
 
-const protectedPrefixes = ["/dashboard", "/onboarding", "/settings"];
+const protectedPrefixes = ["/dashboard", "/onboarding", "/settings", "/admin"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -30,5 +30,11 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/onboarding/:path*", "/settings/:path*"],
+  matcher: [
+    "/dashboard/:path*",
+    "/onboarding/:path*",
+    "/settings/:path*",
+    "/admin",
+    "/admin/:path*",
+  ],
 };

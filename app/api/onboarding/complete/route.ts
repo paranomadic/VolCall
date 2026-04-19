@@ -27,7 +27,7 @@ export async function POST() {
         onboardingStep: 4,
         paymentMethodLabel:
           sub.paymentMethodLabel?.replace(/USDC \(pending\)/, "USDC") ??
-          "Card (Stripe)",
+          "Card",
       },
     }),
     ...assets.map((asset) =>

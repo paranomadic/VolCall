@@ -56,18 +56,24 @@ Add these under **Settings → Environment Variables** (Production + Preview as 
 | Variable | Notes |
 |----------|--------|
 | `JWT_SECRET` | At least 16 characters. |
-| `NEXT_PUBLIC_APP_URL` | Your production URL, e.g. `https://your-project.vercel.app` (no trailing slash). Used for email links and Stripe redirects. |
+| `NEXT_PUBLIC_APP_URL` | Your production URL, e.g. `https://your-project.vercel.app` (no trailing slash). Used for email links and checkout redirects. |
 
 Optional integrations (same names as local):
 
 - `RESEND_API_KEY`, `RESEND_FROM_EMAIL`
-- `TWILIO_*`, `STRIPE_*`, `REDIS_URL`, etc.
+- `TWILIO_*`, `LEMONSQUEEZY_*`, `STRIPE_*`, `VAPI_*`, `REDIS_URL`, etc.
 
 Redeploy after changing env vars (**Deployments → … → Redeploy**).
 
-## 4. Stripe webhooks (production)
+## 4. Payment webhooks (production)
 
-Point Stripe at your live URL:
+**Lemon Squeezy (primary path when configured):**
+
+- **Endpoint URL:** `https://YOUR_DOMAIN/api/lemonsqueezy/webhook`
+- **Events:** at minimum `order_created` and `subscription_created`
+- Use the same signing secret you configured in Lemon as **`LEMONSQUEEZY_WEBHOOK_SECRET`** in Vercel.
+
+**Stripe (fallback when Lemon env is incomplete):**
 
 - **Endpoint URL:** `https://YOUR_DOMAIN/api/stripe/webhook`
 - **Events:** at minimum `checkout.session.completed`

@@ -6,6 +6,8 @@ Volatility-triggered phone call alerts — web app aligned with **VOLCALL PRD v1
 
 **Deploy on Vercel (connect GitHub, env vars, Postgres):** see [docs/vercel.md](docs/vercel.md).
 
+**Local testing, admin (`/admin`), workers:** see [docs/TESTING.md](docs/TESTING.md).
+
 ## Stack
 
 - **Next.js 15** (App Router), **React 19**, **Tailwind CSS 4**
