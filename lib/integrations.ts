@@ -40,3 +40,12 @@ export function isVapiVoiceConfigured(): boolean {
       process.env.VAPI_PHONE_NUMBER_ID,
   );
 }
+
+/** Twilio Programmable Voice (outbound calls) — fallback when Vapi fails or is unset. */
+export function isTwilioVoiceConfigured(): boolean {
+  return Boolean(
+    process.env.TWILIO_ACCOUNT_SID &&
+      process.env.TWILIO_AUTH_TOKEN &&
+      process.env.TWILIO_FROM_NUMBER,
+  );
+}

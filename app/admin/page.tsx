@@ -12,8 +12,24 @@ type Settings = {
   ethCritical: number;
 };
 
+type VoiceStatus = {
+  vapiConfigured: boolean;
+  twilioVoiceConfigured: boolean;
+};
+
+function formatTriggerError(data: Record<string, unknown>, status: number) {
+  const err = data.error;
+  const hint = data.hint;
+  const parts: string[] = [];
+  if (typeof err === "string") parts.push(err);
+  else if (err != null) parts.push(JSON.stringify(err));
+  if (typeof hint === "string") parts.push(hint);
+  return parts.join(" — ") || `Request failed (HTTP ${status})`;
+}
+
 export default function AdminPage() {
   const [settings, setSettings] = useState<Settings | null>(null);
+  const [voice, setVoice] = useState<VoiceStatus | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -21,7 +37,8 @@ export default function AdminPage() {
   const [callEmail, setCallEmail] = useState("");
   const [callAsset, setCallAsset] = useState<"BTC" | "ETH">("BTC");
   const [dvolOverride, setDvolOverride] = useState("");
-  const [dryRun, setDryRun] = useState(true);
+  /** When true, only writes CallEvent — no Vapi/Twilio. Default off so “Place call” dials. */
+  const [dryRun, setDryRun] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -33,6 +50,9 @@ export default function AdminPage() {
       const data = await res.json();
       const s = data.settings as Settings;
       setSettings(s);
+      if (data.voice && typeof data.voice === "object") {
+        setVoice(data.voice as VoiceStatus);
+      }
     })();
   }, []);
 
@@ -93,14 +113,17 @@ export default function AdminPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    const data = await res.json().catch(() => ({}));
+    const data = (await res.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
     if (!res.ok) {
-      setMsg(data.error ?? "Trigger failed.");
+      setMsg(formatTriggerError(data, res.status));
       return;
     }
     setMsg(
       dryRun
-        ? `Dry run: band=${data.band}, wouldAlert=${String(data.wouldAlert)}`
+        ? `Dry run: band=${String(data.band)}, wouldAlert=${String(data.wouldAlert)}. ${typeof data.message === "string" ? data.message : ""}`
         : `Call placed via ${String(data.channel)} (id=${String(data.id)}). Band=${String(data.band)}.`,
     );
   }
@@ -262,10 +285,34 @@ export default function AdminPage() {
       <section className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6">
         <h2 className="font-medium">Trigger test call</h2>
         <p className="mt-1 text-sm text-[var(--muted)]">
-          Uses the subscriber&apos;s first verified phone. Leave DVOL override
-          empty to use live Deribit. Uncheck dry run to dial via Vapi/Twilio
-          (requires voice env).
+          Uses the subscriber&apos;s first <strong>verified</strong> phone. Set a
+          DVOL override if Deribit is unreachable. For a real ring, leave
+          &quot;Simulate only&quot; unchecked and configure voice env on the
+          server (see below).
         </p>
+        {voice &&
+          !voice.vapiConfigured &&
+          !voice.twilioVoiceConfigured && (
+            <p
+              className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100"
+              role="alert"
+            >
+              <strong>No voice provider in this deployment.</strong> Add{" "}
+              <code className="text-xs">VAPI_API_KEY</code>,{" "}
+              <code className="text-xs">VAPI_ASSISTANT_ID</code>,{" "}
+              <code className="text-xs">VAPI_PHONE_NUMBER_ID</code> and/or{" "}
+              <code className="text-xs">TWILIO_ACCOUNT_SID</code>,{" "}
+              <code className="text-xs">TWILIO_AUTH_TOKEN</code>,{" "}
+              <code className="text-xs">TWILIO_FROM_NUMBER</code> in Vercel, then
+              redeploy. Otherwise only &quot;Simulate only&quot; will succeed.
+            </p>
+          )}
+        {voice && (voice.vapiConfigured || voice.twilioVoiceConfigured) && (
+          <p className="mt-3 text-xs text-[var(--muted)]">
+            Voice: {voice.vapiConfigured ? "Vapi ✓" : "Vapi —"} ·{" "}
+            {voice.twilioVoiceConfigured ? "Twilio ✓" : "Twilio —"}
+          </p>
+        )}
         <form onSubmit={triggerCall} className="mt-4 space-y-4">
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block text-sm">
@@ -308,7 +355,7 @@ export default function AdminPage() {
               checked={dryRun}
               onChange={(e) => setDryRun(e.target.checked)}
             />
-            Dry run (record event only, no dial)
+            Simulate only (record CallEvent in DB, no real phone call)
           </label>
           <Button type="submit">
             {dryRun ? "Simulate trigger" : "Place call"}

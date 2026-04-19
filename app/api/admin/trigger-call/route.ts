@@ -88,12 +88,26 @@ export async function POST(request: Request) {
     });
   }
 
-  const out = await placeOutboundVoiceAlert({
-    e164: phone.e164,
-    asset: parsed.data.asset,
-    dvol,
-    band,
-  });
+  let out: Awaited<ReturnType<typeof placeOutboundVoiceAlert>>;
+  try {
+    out = await placeOutboundVoiceAlert({
+      e164: phone.e164,
+      asset: parsed.data.asset,
+      dvol,
+      band,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return NextResponse.json(
+      {
+        error: `Voice provider threw: ${msg}`,
+        band,
+        dvol,
+        wouldAlert: shouldAlert(band),
+      },
+      { status: 502 },
+    );
+  }
 
   if (!out.ok) {
     return NextResponse.json(
@@ -102,6 +116,8 @@ export async function POST(request: Request) {
         band,
         dvol,
         wouldAlert: shouldAlert(band),
+        hint:
+          "On Vercel: Project → Settings → Environment Variables → add VAPI_* and/or Twilio voice vars, then Redeploy. Uncheck “Simulate only” on the admin form for a real dial.",
       },
       { status: 502 },
     );

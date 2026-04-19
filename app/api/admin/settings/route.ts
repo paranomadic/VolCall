@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession } from "@/lib/require-admin";
+import {
+  isTwilioVoiceConfigured,
+  isVapiVoiceConfigured,
+} from "@/lib/integrations";
 
 const patchSchema = z.object({
   btcElevated: z.number().finite(),
@@ -22,7 +26,13 @@ export async function GET() {
     update: {},
   });
 
-  return NextResponse.json({ settings: row });
+  return NextResponse.json({
+    settings: row,
+    voice: {
+      vapiConfigured: isVapiVoiceConfigured(),
+      twilioVoiceConfigured: isTwilioVoiceConfigured(),
+    },
+  });
 }
 
 export async function PATCH(request: Request) {

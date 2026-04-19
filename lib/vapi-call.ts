@@ -19,36 +19,67 @@ export async function placeVapiOutboundCall(params: {
   const assistantId = process.env.VAPI_ASSISTANT_ID!;
   const phoneNumberId = process.env.VAPI_PHONE_NUMBER_ID!;
 
-  const body: Record<string, unknown> = {
+  const variableOverrides =
+    process.env.VAPI_USE_VARIABLE_VALUES === "true"
+      ? {
+          assistantOverrides: {
+            variableValues: {
+              asset: params.asset,
+              dvol: params.dvol.toFixed(1),
+              band: params.band,
+            },
+          },
+        }
+      : {};
+
+  const flatBody: Record<string, unknown> = {
     assistantId,
     phoneNumberId,
     customer: { number: params.e164 },
+    ...variableOverrides,
   };
 
-  if (process.env.VAPI_USE_VARIABLE_VALUES === "true") {
-    body.assistantOverrides = {
-      variableValues: {
-        asset: params.asset,
-        dvol: params.dvol.toFixed(1),
-        band: params.band,
+  const nestedBody: Record<string, unknown> = {
+    assistant: { assistantId },
+    phoneNumberId,
+    customer: { number: params.e164 },
+    ...variableOverrides,
+  };
+
+  async function post(body: Record<string, unknown>) {
+    const res = await fetch("https://api.vapi.ai/call", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
       },
+      body: JSON.stringify(body),
+    });
+    const text = await res.text();
+    return { res, text };
+  }
+
+  let { res, text } = await post(flatBody);
+  if (!res.ok && res.status >= 400 && res.status < 500) {
+    const second = await post(nestedBody);
+    res = second.res;
+    text = second.text;
+  }
+
+  if (!res.ok) {
+    return {
+      ok: false,
+      message: `${res.status} ${text.slice(0, 1200)}`,
     };
   }
 
-  const res = await fetch("https://api.vapi.ai/call", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
+  const data = (() => {
+    try {
+      return JSON.parse(text) as { id?: string };
+    } catch {
+      return {};
+    }
+  })();
 
-  if (!res.ok) {
-    const t = await res.text();
-    return { ok: false, message: `${res.status} ${t}` };
-  }
-
-  const data = (await res.json().catch(() => ({}))) as { id?: string };
   return { ok: true, id: data.id };
 }
