@@ -59,6 +59,9 @@ export default function AdminPage() {
   const [dvolMsg, setDvolMsg] = useState<string | null>(null);
   const [dvolRows, setDvolRows] = useState<DvolRow[] | null>(null);
   const [dvolLatency, setDvolLatency] = useState<number | null>(null);
+  const [dvolThresholdNote, setDvolThresholdNote] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
     void (async () => {
@@ -89,11 +92,37 @@ export default function AdminPage() {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      setSettingsNotice(data.error ? JSON.stringify(data.error) : "Save failed.");
+      setSettingsNotice(
+        typeof data.error === "string"
+          ? data.error
+          : data.error
+            ? JSON.stringify(data.error)
+            : "Save failed.",
+      );
       return;
     }
     setSettings(data.settings);
     setSettingsNotice("Thresholds saved.");
+  }
+
+  async function resetPrdThresholds() {
+    setSettingsNotice(null);
+    const res = await fetch("/api/admin/settings/reset-prd", {
+      method: "POST",
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setSettingsNotice(
+        typeof data.error === "string" ? data.error : "Reset failed.",
+      );
+      return;
+    }
+    if (data.settings) {
+      setSettings(data.settings as Settings);
+    }
+    setSettingsNotice(
+      "Reset DVOL thresholds to PRD defaults (BTC 50/70/90, ETH 60/80/100).",
+    );
   }
 
   async function grantFree(e: React.FormEvent) {
@@ -190,11 +219,13 @@ export default function AdminPage() {
     setDvolMsg(null);
     setDvolRows(null);
     setDvolLatency(null);
+    setDvolThresholdNote(null);
     const res = await fetch("/api/admin/dvol-read", { method: "POST" });
     const data = (await res.json().catch(() => ({}))) as {
       readings?: DvolRow[];
       latencyMs?: number;
-      error?: unknown;
+      note?: string;
+      thresholds?: Record<string, { usingFallback?: boolean }>;
     };
     if (!res.ok) {
       setDvolMsg(JSON.stringify(data));
@@ -203,6 +234,16 @@ export default function AdminPage() {
     setDvolRows(data.readings ?? null);
     setDvolLatency(typeof data.latencyMs === "number" ? data.latencyMs : null);
     setDvolMsg(`Deribit OK · ${String(data.latencyMs ?? "?")} ms`);
+    if (typeof data.note === "string") {
+      setDvolThresholdNote(data.note);
+    } else {
+      const th = data.thresholds;
+      if (th?.BTC?.usingFallback || th?.ETH?.usingFallback) {
+        setDvolThresholdNote(
+          "Bands used PRD defaults because stored thresholds were not ordered (need elevated < high < critical). Click “Reset to PRD defaults” in the section below to fix the database.",
+        );
+      }
+    }
   }
 
   if (loadError) {
@@ -260,9 +301,28 @@ export default function AdminPage() {
             {voice &&
               !voice.vapiConfigured &&
               !voice.twilioVoiceConfigured && (
-                <p className="mt-2 text-xs text-amber-200/90">
-                  No voice env — use Simulate only or add Vapi/Twilio on server.
-                </p>
+                <div className="mt-2 space-y-2 text-xs text-amber-100/95">
+                  <p>
+                    <strong>Real calls are off:</strong> add env in Vercel →
+                    Settings → Environment Variables (enable for{" "}
+                    <strong>Production</strong> and any previews you use), then{" "}
+                    <strong>Redeploy</strong>:
+                  </p>
+                  <ul className="list-inside list-disc space-y-0.5 font-mono text-[10px] opacity-90">
+                    <li>
+                      Vapi: VAPI_API_KEY, VAPI_ASSISTANT_ID, VAPI_PHONE_NUMBER_ID
+                    </li>
+                    <li>
+                      Twilio voice: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN,
+                      TWILIO_FROM_NUMBER
+                    </li>
+                  </ul>
+                  <p className="text-amber-200/85">
+                    Twilio Verify (OTP SMS) is separate—you still need a caller
+                    ID via <code className="text-[10px]">TWILIO_FROM_NUMBER</code>{" "}
+                    for outbound calls. Until then, use <strong>Simulate only</strong>.
+                  </p>
+                </div>
               )}
             <form onSubmit={runCallTest} className="mt-4 space-y-3">
               <label className="block text-xs">
@@ -373,6 +433,11 @@ export default function AdminPage() {
             {dvolLatency != null && (
               <p className="mt-2 text-xs text-[var(--muted)]">{dvolMsg}</p>
             )}
+            {dvolThresholdNote && (
+              <p className="mt-2 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-2 text-xs text-amber-100">
+                {dvolThresholdNote}
+              </p>
+            )}
             {dvolRows && (
               <ul className="mt-3 space-y-2 text-sm">
                 {dvolRows.map((r) => (
@@ -405,6 +470,7 @@ export default function AdminPage() {
       <section className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6">
         <h2 className="font-medium">DVOL band thresholds (alert engine)</h2>
         <p className="mt-1 text-sm text-[var(--muted)]">
+          Must keep <strong>elevated &lt; high &lt; critical</strong> per asset.
           Rules: <code className="text-xs">&gt; critical</code>, then{" "}
           <code className="text-xs">&gt; high</code>, then{" "}
           <code className="text-xs">&gt;= elevated</code>. Voice alerts fire on
@@ -505,7 +571,16 @@ export default function AdminPage() {
               </label>
             </div>
           </div>
-          <Button type="submit">Save thresholds</Button>
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit">Save thresholds</Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void resetPrdThresholds()}
+            >
+              Reset to PRD defaults
+            </Button>
+          </div>
         </form>
       </section>
 

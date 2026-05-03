@@ -35,8 +35,16 @@ npm run alert-engine
 - **`ALERT_ENGINE_DRY_RUN=true`** (default): logs would-be calls and writes `[dry-run]` rows; no Vapi/Twilio.
 - Set **`ALERT_ENGINE_DRY_RUN=false`** and configure **Vapi** or **Twilio** to place real calls.
 
+**Outbound voice on Vercel:** the **Next.js app** can place admin test calls if you set **either**:
+
+- **Vapi:** `VAPI_API_KEY`, `VAPI_ASSISTANT_ID`, `VAPI_PHONE_NUMBER_ID`, or  
+- **Twilio Programmable Voice:** `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, **`TWILIO_FROM_NUMBER`**
+
+Add them under **Project → Settings → Environment Variables** for **Production** (and Preview if you test there), then **Redeploy**.  
+**Twilio Verify** (SMS OTP) keys alone do **not** enable outbound voice—you need a **caller ID** via `TWILIO_FROM_NUMBER`.
+
 The worker polls Deribit DVOL about every 60s and uses thresholds from the **`SystemSettings`** table (created when you first save in Admin or on first engine tick).
 
 ## Payments and SMS
 
-Optional: configure Lemon Squeezy, Stripe, Resend, Twilio Verify per `.env.example`. Without them, the app uses demo paths (simulated checkout, OTP `000000`).
+DVOL bands require **elevated &lt; high &lt; critical** per asset. If they get out of order, the engine and admin DVOL read **fall back to PRD defaults** until you fix or use **Reset to PRD defaults** in Admin.

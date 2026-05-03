@@ -8,6 +8,9 @@ import {
   isTwilioVoiceConfigured,
   isVapiVoiceConfigured,
 } from "@/lib/integrations";
+import {
+  validateDvolThresholdOrder,
+} from "@/lib/dvol-threshold-rules";
 
 const patchSchema = z.object({
   btcElevated: z.number().finite(),
@@ -50,6 +53,26 @@ export async function PATCH(request: Request) {
   if (!parsed.success) {
     return NextResponse.json(
       { error: parsed.error.flatten().fieldErrors },
+      { status: 400 },
+    );
+  }
+
+  const d = parsed.data;
+  const btcErr = validateDvolThresholdOrder(
+    d.btcElevated,
+    d.btcHigh,
+    d.btcCritical,
+    "BTC",
+  );
+  const ethErr = validateDvolThresholdOrder(
+    d.ethElevated,
+    d.ethHigh,
+    d.ethCritical,
+    "ETH",
+  );
+  if (btcErr || ethErr) {
+    return NextResponse.json(
+      { error: [btcErr, ethErr].filter(Boolean).join(" ") },
       { status: 400 },
     );
   }

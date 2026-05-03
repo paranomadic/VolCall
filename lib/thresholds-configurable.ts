@@ -1,6 +1,10 @@
 import type { SystemSettings } from "@prisma/client";
 
 import type { VolBand } from "@/lib/thresholds";
+import {
+  effectiveBtcThresholds,
+  effectiveEthThresholds,
+} from "@/lib/dvol-threshold-rules";
 
 export function classifyDvolBand(
   dvol: number,
@@ -20,20 +24,12 @@ export function classifyForAssetFromSettings(
   s: SystemSettings,
 ): VolBand {
   if (asset === "BTC") {
-    return classifyDvolBand(
-      dvol,
-      s.btcElevated,
-      s.btcHigh,
-      s.btcCritical,
-    );
+    const t = effectiveBtcThresholds(s);
+    return classifyDvolBand(dvol, t.elevated, t.high, t.critical);
   }
   if (asset === "ETH") {
-    return classifyDvolBand(
-      dvol,
-      s.ethElevated,
-      s.ethHigh,
-      s.ethCritical,
-    );
+    const t = effectiveEthThresholds(s);
+    return classifyDvolBand(dvol, t.elevated, t.high, t.critical);
   }
   return "none";
 }
