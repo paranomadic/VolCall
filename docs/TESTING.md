@@ -16,11 +16,13 @@ Open `http://localhost:3000`, sign up, and walk through onboarding (or use **Adm
 1. Set **`ADMIN_EMAILS`** in `.env` to your login email (comma-separated for multiple), **or**
 2. Run `npx prisma studio` and set **`isAdmin = true`** on your `User` row.
 
-Then open **`/admin`** while logged in. From there you can:
+Then open **`/admin`** while logged in. Use **App flow tests** at the top for quick checks:
 
-- Adjust **global DVOL thresholds** (used by `npm run alert-engine`).
-- **Grant comp access** so a subscriber is ACTIVE without paying.
-- **Trigger a test call** (dry run records a `CallEvent`; real dial needs Vapi or Twilio voice env).
+1. **Call test** — **`POST /api/admin/trigger-call`**
+2. **Payment test** — **`POST /api/admin/payment-test`** (`action`: `status` | `simulate_checkout` | `hosted_checkout`)
+3. **DVOL read test** — **`POST /api/admin/dvol-read`** (Deribit BTC/ETH, bands vs saved thresholds)
+
+You can also adjust **global DVOL thresholds**, **grant comp**, and deep tools below that.
 
 ## Alert engine worker
 

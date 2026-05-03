@@ -17,6 +17,19 @@ type VoiceStatus = {
   twilioVoiceConfigured: boolean;
 };
 
+type PaymentStatus = {
+  lemonSqueezyConfigured: boolean;
+  stripeConfigured: boolean;
+};
+
+type DvolRow = {
+  asset: string;
+  dvol: number | null;
+  error?: string;
+  band?: string;
+  wouldAlert?: boolean;
+};
+
 function formatTriggerError(data: Record<string, unknown>, status: number) {
   const err = data.error;
   const hint = data.hint;
@@ -30,15 +43,22 @@ function formatTriggerError(data: Record<string, unknown>, status: number) {
 export default function AdminPage() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [voice, setVoice] = useState<VoiceStatus | null>(null);
+  const [payments, setPayments] = useState<PaymentStatus | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [settingsNotice, setSettingsNotice] = useState<string | null>(null);
 
   const [grantEmail, setGrantEmail] = useState("");
-  const [callEmail, setCallEmail] = useState("");
+  const [flowEmail, setFlowEmail] = useState("");
   const [callAsset, setCallAsset] = useState<"BTC" | "ETH">("BTC");
   const [dvolOverride, setDvolOverride] = useState("");
-  /** When true, only writes CallEvent — no Vapi/Twilio. Default off so “Place call” dials. */
   const [dryRun, setDryRun] = useState(false);
+
+  const [callMsg, setCallMsg] = useState<string | null>(null);
+  const [paymentMsg, setPaymentMsg] = useState<string | null>(null);
+  const [paymentLoading, setPaymentLoading] = useState<string | null>(null);
+  const [dvolMsg, setDvolMsg] = useState<string | null>(null);
+  const [dvolRows, setDvolRows] = useState<DvolRow[] | null>(null);
+  const [dvolLatency, setDvolLatency] = useState<number | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -48,10 +68,12 @@ export default function AdminPage() {
         return;
       }
       const data = await res.json();
-      const s = data.settings as Settings;
-      setSettings(s);
+      setSettings(data.settings as Settings);
       if (data.voice && typeof data.voice === "object") {
         setVoice(data.voice as VoiceStatus);
+      }
+      if (data.payments && typeof data.payments === "object") {
+        setPayments(data.payments as PaymentStatus);
       }
     })();
   }, []);
@@ -59,7 +81,7 @@ export default function AdminPage() {
   async function saveThresholds(e: React.FormEvent) {
     e.preventDefault();
     if (!settings) return;
-    setMsg(null);
+    setSettingsNotice(null);
     const res = await fetch("/api/admin/settings", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -67,16 +89,16 @@ export default function AdminPage() {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      setMsg(data.error ? JSON.stringify(data.error) : "Save failed.");
+      setSettingsNotice(data.error ? JSON.stringify(data.error) : "Save failed.");
       return;
     }
     setSettings(data.settings);
-    setMsg("Thresholds saved.");
+    setSettingsNotice("Thresholds saved.");
   }
 
   async function grantFree(e: React.FormEvent) {
     e.preventDefault();
-    setMsg(null);
+    setSettingsNotice(null);
     const res = await fetch("/api/admin/grant-free", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -84,18 +106,22 @@ export default function AdminPage() {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      setMsg(data.error ?? "Grant failed.");
+      setSettingsNotice(data.error ?? "Grant failed.");
       return;
     }
-    setMsg(`Granted comp access to ${data.email}.`);
+    setSettingsNotice(`Granted comp access to ${data.email}.`);
     setGrantEmail("");
   }
 
-  async function triggerCall(e: React.FormEvent) {
+  async function runCallTest(e: React.FormEvent) {
     e.preventDefault();
-    setMsg(null);
+    setCallMsg(null);
+    if (!flowEmail.trim()) {
+      setCallMsg("Enter the subscriber email above.");
+      return;
+    }
     const body: Record<string, unknown> = {
-      email: callEmail,
+      email: flowEmail.trim(),
       asset: callAsset,
       dryRun,
     };
@@ -103,7 +129,7 @@ export default function AdminPage() {
     if (o !== "") {
       const n = Number(o);
       if (!Number.isFinite(n)) {
-        setMsg("DVOL override must be a number.");
+        setCallMsg("DVOL override must be a number.");
         return;
       }
       body.dvolOverride = n;
@@ -113,19 +139,70 @@ export default function AdminPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    const data = (await res.json().catch(() => ({}))) as Record<
-      string,
-      unknown
-    >;
+    const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
     if (!res.ok) {
-      setMsg(formatTriggerError(data, res.status));
+      setCallMsg(formatTriggerError(data, res.status));
       return;
     }
-    setMsg(
+    setCallMsg(
       dryRun
-        ? `Dry run: band=${String(data.band)}, wouldAlert=${String(data.wouldAlert)}. ${typeof data.message === "string" ? data.message : ""}`
+        ? `Simulated: band=${String(data.band)}, wouldAlert=${String(data.wouldAlert)}. ${typeof data.message === "string" ? data.message : ""}`
         : `Call placed via ${String(data.channel)} (id=${String(data.id)}). Band=${String(data.band)}.`,
     );
+  }
+
+  async function runPaymentAction(
+    action: "status" | "simulate_checkout" | "hosted_checkout",
+  ) {
+    setPaymentMsg(null);
+    setPaymentLoading(action);
+    if (!flowEmail.trim()) {
+      setPaymentMsg("Enter the subscriber email above.");
+      setPaymentLoading(null);
+      return;
+    }
+    const res = await fetch("/api/admin/payment-test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: flowEmail.trim(), action }),
+    });
+    const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    setPaymentLoading(null);
+    if (!res.ok) {
+      setPaymentMsg(
+        typeof data.error === "string"
+          ? data.error
+          : JSON.stringify(data.error ?? data),
+      );
+      return;
+    }
+    if (action === "hosted_checkout" && typeof data.url === "string") {
+      setPaymentMsg(
+        `Opened ${String(data.provider)} checkout in a new tab. Complete payment as that user.`,
+      );
+      window.open(data.url, "_blank", "noopener,noreferrer");
+      return;
+    }
+    setPaymentMsg(JSON.stringify(data, null, 2));
+  }
+
+  async function runDvolRead() {
+    setDvolMsg(null);
+    setDvolRows(null);
+    setDvolLatency(null);
+    const res = await fetch("/api/admin/dvol-read", { method: "POST" });
+    const data = (await res.json().catch(() => ({}))) as {
+      readings?: DvolRow[];
+      latencyMs?: number;
+      error?: unknown;
+    };
+    if (!res.ok) {
+      setDvolMsg(JSON.stringify(data));
+      return;
+    }
+    setDvolRows(data.readings ?? null);
+    setDvolLatency(typeof data.latencyMs === "number" ? data.latencyMs : null);
+    setDvolMsg(`Deribit OK · ${String(data.latencyMs ?? "?")} ms`);
   }
 
   if (loadError) {
@@ -144,16 +221,186 @@ export default function AdminPage() {
       <div>
         <h1 className="text-2xl font-semibold">Admin</h1>
         <p className="mt-1 text-sm text-[var(--muted)]">
-          Access is limited to <code className="text-xs">ADMIN_EMAILS</code> or
-          users with <code className="text-xs">isAdmin</code> in the database.
+          <code className="text-xs">ADMIN_EMAILS</code> or{" "}
+          <code className="text-xs">isAdmin</code> required. Use{" "}
+          <strong>App flow tests</strong> below to validate calls, billing, and
+          DVOL reads.
         </p>
       </div>
 
-      {msg && (
+      {settingsNotice && (
         <p className="rounded-lg border border-[var(--border)] bg-white/5 px-4 py-3 text-sm">
-          {msg}
+          {settingsNotice}
         </p>
       )}
+
+      <section className="rounded-2xl border border-[var(--accent)]/30 bg-[var(--accent)]/5 p-6">
+        <h2 className="text-lg font-semibold">App flow tests</h2>
+        <p className="mt-1 text-sm text-[var(--muted)]">
+          Call and payment flows use the same subscriber email (must exist in DB,
+          verified phone for real calls).
+        </p>
+        <label className="mt-4 block text-sm font-medium">
+          Subscriber email (call + payment tests)
+          <input
+            type="email"
+            className="mt-1 w-full max-w-md rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2"
+            placeholder="you@example.com"
+            value={flowEmail}
+            onChange={(e) => setFlowEmail(e.target.value)}
+          />
+        </label>
+
+        <div className="mt-8 grid gap-6 lg:grid-cols-3">
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5">
+            <h3 className="font-medium">1. Call test</h3>
+            <p className="mt-1 text-xs text-[var(--muted)]">
+              Vapi/Twilio outbound (or simulate DB row only).
+            </p>
+            {voice &&
+              !voice.vapiConfigured &&
+              !voice.twilioVoiceConfigured && (
+                <p className="mt-2 text-xs text-amber-200/90">
+                  No voice env — use Simulate only or add Vapi/Twilio on server.
+                </p>
+              )}
+            <form onSubmit={runCallTest} className="mt-4 space-y-3">
+              <label className="block text-xs">
+                Asset
+                <select
+                  className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+                  value={callAsset}
+                  onChange={(e) =>
+                    setCallAsset(e.target.value as "BTC" | "ETH")
+                  }
+                >
+                  <option value="BTC">BTC</option>
+                  <option value="ETH">ETH</option>
+                </select>
+              </label>
+              <label className="block text-xs">
+                DVOL override (optional)
+                <input
+                  type="text"
+                  className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+                  placeholder="e.g. 95"
+                  value={dvolOverride}
+                  onChange={(e) => setDvolOverride(e.target.value)}
+                />
+              </label>
+              <label className="flex items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={dryRun}
+                  onChange={(e) => setDryRun(e.target.checked)}
+                />
+                Simulate only (no dial)
+              </label>
+              <Button type="submit" className="w-full sm:w-auto">
+                {dryRun ? "Run call simulation" : "Place test call"}
+              </Button>
+            </form>
+            {callMsg && (
+              <pre className="mt-3 max-h-40 overflow-auto whitespace-pre-wrap rounded border border-[var(--border)] bg-black/20 p-2 text-xs">
+                {callMsg}
+              </pre>
+            )}
+          </div>
+
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5">
+            <h3 className="font-medium">2. Payment test</h3>
+            <p className="mt-1 text-xs text-[var(--muted)]">
+              Inspect status, mock paid step, or open Lemon/Stripe checkout.
+            </p>
+            {payments && (
+              <p className="mt-2 text-xs text-[var(--muted)]">
+                Hosted:{" "}
+                {payments.lemonSqueezyConfigured
+                  ? "Lemon Squeezy (primary)"
+                  : payments.stripeConfigured
+                    ? "Stripe"
+                    : "none (use simulate)"}
+              </p>
+            )}
+            <div className="mt-4 flex flex-col gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={paymentLoading != null}
+                onClick={() => void runPaymentAction("status")}
+              >
+                {paymentLoading === "status" ? "…" : "Check payment status"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={paymentLoading != null}
+                onClick={() => void runPaymentAction("simulate_checkout")}
+              >
+                {paymentLoading === "simulate_checkout"
+                  ? "…"
+                  : "Simulate checkout (step → 3)"}
+              </Button>
+              <Button
+                type="button"
+                disabled={paymentLoading != null}
+                onClick={() => void runPaymentAction("hosted_checkout")}
+              >
+                {paymentLoading === "hosted_checkout"
+                  ? "…"
+                  : "Open hosted checkout"}
+              </Button>
+            </div>
+            {paymentMsg && (
+              <pre className="mt-3 max-h-56 overflow-auto whitespace-pre-wrap rounded border border-[var(--border)] bg-black/20 p-2 text-xs">
+                {paymentMsg}
+              </pre>
+            )}
+          </div>
+
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5">
+            <h3 className="font-medium">3. DVOL read test</h3>
+            <p className="mt-1 text-xs text-[var(--muted)]">
+              Live Deribit index (same as alert worker source).
+            </p>
+            <Button
+              type="button"
+              className="mt-4"
+              onClick={() => void runDvolRead()}
+            >
+              Run DVOL read
+            </Button>
+            {dvolLatency != null && (
+              <p className="mt-2 text-xs text-[var(--muted)]">{dvolMsg}</p>
+            )}
+            {dvolRows && (
+              <ul className="mt-3 space-y-2 text-sm">
+                {dvolRows.map((r) => (
+                  <li
+                    key={r.asset}
+                    className="rounded-lg border border-[var(--border)] px-3 py-2"
+                  >
+                    <span className="font-medium">{r.asset}</span>
+                    {r.error && (
+                      <span className="ml-2 text-red-400">{r.error}</span>
+                    )}
+                    {r.dvol != null && (
+                      <span className="text-[var(--muted)]">
+                        {" "}
+                        DVOL {r.dvol.toFixed(2)} · band {r.band} · alert{" "}
+                        {r.wouldAlert ? "yes" : "no"}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {dvolMsg && !dvolRows && (
+              <p className="mt-2 text-xs text-red-400">{dvolMsg}</p>
+            )}
+          </div>
+        </div>
+      </section>
 
       <section className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6">
         <h2 className="font-medium">DVOL band thresholds (alert engine)</h2>
@@ -279,87 +526,6 @@ export default function AdminPage() {
             onChange={(e) => setGrantEmail(e.target.value)}
           />
           <Button type="submit">Grant access</Button>
-        </form>
-      </section>
-
-      <section className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6">
-        <h2 className="font-medium">Trigger test call</h2>
-        <p className="mt-1 text-sm text-[var(--muted)]">
-          Uses the subscriber&apos;s first <strong>verified</strong> phone. Set a
-          DVOL override if Deribit is unreachable. For a real ring, leave
-          &quot;Simulate only&quot; unchecked and configure voice env on the
-          server (see below).
-        </p>
-        {voice &&
-          !voice.vapiConfigured &&
-          !voice.twilioVoiceConfigured && (
-            <p
-              className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100"
-              role="alert"
-            >
-              <strong>No voice provider in this deployment.</strong> Add{" "}
-              <code className="text-xs">VAPI_API_KEY</code>,{" "}
-              <code className="text-xs">VAPI_ASSISTANT_ID</code>,{" "}
-              <code className="text-xs">VAPI_PHONE_NUMBER_ID</code> and/or{" "}
-              <code className="text-xs">TWILIO_ACCOUNT_SID</code>,{" "}
-              <code className="text-xs">TWILIO_AUTH_TOKEN</code>,{" "}
-              <code className="text-xs">TWILIO_FROM_NUMBER</code> in Vercel, then
-              redeploy. Otherwise only &quot;Simulate only&quot; will succeed.
-            </p>
-          )}
-        {voice && (voice.vapiConfigured || voice.twilioVoiceConfigured) && (
-          <p className="mt-3 text-xs text-[var(--muted)]">
-            Voice: {voice.vapiConfigured ? "Vapi ✓" : "Vapi —"} ·{" "}
-            {voice.twilioVoiceConfigured ? "Twilio ✓" : "Twilio —"}
-          </p>
-        )}
-        <form onSubmit={triggerCall} className="mt-4 space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block text-sm">
-              <span className="text-[var(--muted)]">Email</span>
-              <input
-                type="email"
-                required
-                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2"
-                value={callEmail}
-                onChange={(e) => setCallEmail(e.target.value)}
-              />
-            </label>
-            <label className="block text-sm">
-              <span className="text-[var(--muted)]">Asset</span>
-              <select
-                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2"
-                value={callAsset}
-                onChange={(e) =>
-                  setCallAsset(e.target.value as "BTC" | "ETH")
-                }
-              >
-                <option value="BTC">BTC</option>
-                <option value="ETH">ETH</option>
-              </select>
-            </label>
-          </div>
-          <label className="block text-sm">
-            <span className="text-[var(--muted)]">DVOL override (optional)</span>
-            <input
-              type="text"
-              placeholder="e.g. 95 — forces band for message content"
-              className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2"
-              value={dvolOverride}
-              onChange={(e) => setDvolOverride(e.target.value)}
-            />
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={dryRun}
-              onChange={(e) => setDryRun(e.target.checked)}
-            />
-            Simulate only (record CallEvent in DB, no real phone call)
-          </label>
-          <Button type="submit">
-            {dryRun ? "Simulate trigger" : "Place call"}
-          </Button>
         </form>
       </section>
     </div>

@@ -3,6 +3,8 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession } from "@/lib/require-admin";
 import {
+  isLemonSqueezyConfigured,
+  isStripeCheckoutConfigured,
   isTwilioVoiceConfigured,
   isVapiVoiceConfigured,
 } from "@/lib/integrations";
@@ -31,6 +33,10 @@ export async function GET() {
     voice: {
       vapiConfigured: isVapiVoiceConfigured(),
       twilioVoiceConfigured: isTwilioVoiceConfigured(),
+    },
+    payments: {
+      lemonSqueezyConfigured: isLemonSqueezyConfigured(),
+      stripeConfigured: isStripeCheckoutConfigured(),
     },
   });
 }
