@@ -32,13 +32,40 @@ export function isLemonSqueezyConfigured(): boolean {
   );
 }
 
+/** Names VolCall expects (must match Vercel env keys exactly). */
+export const VAPI_VOICE_ENV_NAMES = [
+  "VAPI_API_KEY",
+  "VAPI_ASSISTANT_ID",
+  "VAPI_PHONE_NUMBER_ID",
+] as const;
+
+/** Which Vapi env vars are set — safe for JSON (no secret values). */
+export function getVapiVoiceEnvDiagnostics(): {
+  VAPI_API_KEY: boolean;
+  VAPI_ASSISTANT_ID: boolean;
+  VAPI_PHONE_NUMBER_ID: boolean;
+  fullyConfigured: boolean;
+  missingEnvVars: string[];
+} {
+  const apiKey = Boolean(process.env.VAPI_API_KEY?.trim());
+  const assistantId = Boolean(process.env.VAPI_ASSISTANT_ID?.trim());
+  const phoneNumberId = Boolean(process.env.VAPI_PHONE_NUMBER_ID?.trim());
+  const missingEnvVars: string[] = [];
+  if (!apiKey) missingEnvVars.push("VAPI_API_KEY");
+  if (!assistantId) missingEnvVars.push("VAPI_ASSISTANT_ID");
+  if (!phoneNumberId) missingEnvVars.push("VAPI_PHONE_NUMBER_ID");
+  return {
+    VAPI_API_KEY: apiKey,
+    VAPI_ASSISTANT_ID: assistantId,
+    VAPI_PHONE_NUMBER_ID: phoneNumberId,
+    fullyConfigured: apiKey && assistantId && phoneNumberId,
+    missingEnvVars,
+  };
+}
+
 /** Primary IVR/voice for alert calls: Vapi outbound (Twilio remains fallback). */
 export function isVapiVoiceConfigured(): boolean {
-  return Boolean(
-    process.env.VAPI_API_KEY &&
-      process.env.VAPI_ASSISTANT_ID &&
-      process.env.VAPI_PHONE_NUMBER_ID,
-  );
+  return getVapiVoiceEnvDiagnostics().fullyConfigured;
 }
 
 /** Twilio Programmable Voice (outbound calls) — fallback when Vapi fails or is unset. */

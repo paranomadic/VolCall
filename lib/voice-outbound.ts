@@ -1,5 +1,10 @@
 import twilio from "twilio";
-import { isTwilioVoiceConfigured, isVapiVoiceConfigured } from "@/lib/integrations";
+import {
+  getVapiVoiceEnvDiagnostics,
+  isTwilioVoiceConfigured,
+  isVapiVoiceConfigured,
+  VAPI_VOICE_ENV_NAMES,
+} from "@/lib/integrations";
 import { placeVapiOutboundCall } from "@/lib/vapi-call";
 
 export async function placeOutboundVoiceAlert(params: {
@@ -25,15 +30,28 @@ export async function placeOutboundVoiceAlert(params: {
   }
 
   if (!isTwilioVoiceConfigured()) {
-    const base =
-      "No outbound voice configured on the server. Set VAPI_API_KEY, VAPI_ASSISTANT_ID, VAPI_PHONE_NUMBER_ID (Vapi), and/or TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER (Twilio). Add these in Vercel → Environment Variables and redeploy.";
+    const vapiDiag = getVapiVoiceEnvDiagnostics();
     if (vapiErr) {
       return {
         ok: false,
-        message: `Vapi request failed: ${vapiErr} Twilio voice is not configured for fallback.`,
+        message: `Vapi API error: ${vapiErr} (Twilio fallback not configured.)`,
       };
     }
-    return { ok: false, message: base };
+    if (!vapiDiag.fullyConfigured) {
+      const missing = vapiDiag.missingEnvVars.join(", ");
+      return {
+        ok: false,
+        message:
+          vapiDiag.missingEnvVars.length === VAPI_VOICE_ENV_NAMES.length
+            ? `Vapi env not loaded — add all three in Vercel (exact names): ${missing}. Enable for Production, save, then Redeploy. Twilio is optional.`
+            : `Vapi incomplete — missing: ${missing}. All three must be non-empty. Check spelling (underscores), no stray spaces; redeploy after saving.`,
+      };
+    }
+    return {
+      ok: false,
+      message:
+        "Voice misconfiguration (unexpected). Try redeploy; optional Twilio fallback: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER.",
+    };
   }
 
   const from = process.env.TWILIO_FROM_NUMBER!;

@@ -32,39 +32,23 @@ export async function placeVapiOutboundCall(params: {
         }
       : {};
 
-  const flatBody: Record<string, unknown> = {
+  // Top-level assistantId only — `assistant: { assistantId }` is rejected by Vapi.
+  const body: Record<string, unknown> = {
     assistantId,
     phoneNumberId,
     customer: { number: params.e164 },
     ...variableOverrides,
   };
 
-  const nestedBody: Record<string, unknown> = {
-    assistant: { assistantId },
-    phoneNumberId,
-    customer: { number: params.e164 },
-    ...variableOverrides,
-  };
-
-  async function post(body: Record<string, unknown>) {
-    const res = await fetch("https://api.vapi.ai/call", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    });
-    const text = await res.text();
-    return { res, text };
-  }
-
-  let { res, text } = await post(flatBody);
-  if (!res.ok && res.status >= 400 && res.status < 500) {
-    const second = await post(nestedBody);
-    res = second.res;
-    text = second.text;
-  }
+  const res = await fetch("https://api.vapi.ai/call", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  const text = await res.text();
 
   if (!res.ok) {
     return {
